@@ -1,0 +1,40 @@
+# Logs
+logs/
+*.log
+
+# Node modules (si usa npm en el futuro)
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Sistema
+Thumbs.db
+.DS_Store
+
+# Caché
+*.cache
+*.tmp
+
+# Compilación
+dist/
+build/
+
+# PHP
+composer.lock
+vendor/
+.phpunit.result.cache
+
+# Database
+*.sqlite
+*.db
+config/database.local.php

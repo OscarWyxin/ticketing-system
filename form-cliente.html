@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soporte | Enviar Ticket</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #0ea5e9;
+            --primary-light: #38bdf8;
+            --primary-dark: #0284c7;
+            --primary-gradient: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 50%, #14b8a6 100%);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --dark: #0f172a;
+            --gray-50: #f8fafc;
+            --gray-100: #f1f5f9;
+            --gray-200: #e2e8f0;
+            --gray-300: #cbd5e1;
+            --gray-400: #94a3b8;
+            --gray-500: #64748b;
+            --gray-600: #475569;
+            --gray-700: #334155;
+            --gray-800: #1e293b;
+            --gray-900: #0f172a;
+            --radius: 20px;
+            --radius-sm: 12px;
+            --shadow-lg: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+            --shadow-xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            position: relative;
+            background: var(--gray-100);
+        }
+
+        /* Beautiful gradient background */
+        .bg-container {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #ffd93d 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            z-index: -2;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(100px);
+            z-index: -1;
+        }
+
+        /* Floating elements */
+        .floating-elements {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .float-item {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: floatUp 20s infinite ease-in-out;
+        }
+
+        .float-item:nth-child(1) { width: 80px; height: 80px; left: 10%; animation-delay: 0s; }
+        .float-item:nth-child(2) { width: 120px; height: 120px; left: 25%; animation-delay: -3s; }
+        .float-item:nth-child(3) { width: 60px; height: 60px; left: 50%; animation-delay: -6s; }
+        .float-item:nth-child(4) { width: 100px; height: 100px; left: 75%; animation-delay: -9s; }
+        .float-item:nth-child(5) { width: 70px; height: 70px; left: 90%; animation-delay: -12s; }
+
+        @keyframes floatUp {
+            0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+            10% { opacity: 0.5; }
+            90% { opacity: 0.5; }
+            100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+        }
+
+        .form-wrapper {
+            width: 100%;
+            max-width: 520px;
+        }
+
+        /* Logo/Branding */
+        .brand {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .brand-logo {
+            width: 70px;
+            height: 70px;
+            background: white;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            box-shadow: var(--shadow-lg);
+            font-size: 2rem;
+        }
+
+        .brand h2 {
+            color: white;
+            font-size: 1.25rem;
+            font-weight: 600;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .form-container {
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow-xl);
+            overflow: hidden;
+        }
+
+        .form-header {
+            background: var(--dark);
+            color: white;
+            padding: 32px;
+            text-align: center;
+            position: relative;
+        }
+
+        .form-header::after {
+            content: '';
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 40px;
+            height: 40px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .form-header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .form-header p {
+            opacity: 0.7;
+            font-size: 0.9rem;
+        }
+
+        .form-body {
+            padding: 40px 32px 32px;
+        }
+
+        .welcome-text {
+            text-align: center;
+            margin-bottom: 28px;
+            padding-top: 10px;
+        }
+
+        .welcome-text .emoji {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+        }
+
+        .welcome-text h3 {
+            color: var(--gray-800);
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+
+        .welcome-text p {
+            color: var(--gray-500);
+            font-size: 0.9rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 8px;
+            font-size: 0.875rem;
+        }
+
+        .form-group label .required {
+            color: var(--danger);
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray-400);
+            font-size: 1rem;
+            transition: color 0.2s ease;
+        }
+
+        .input-wrapper input,
+        .input-wrapper select,
+        .input-wrapper textarea {
+            padding-left: 48px;
+        }
+
+        .input-wrapper:focus-within i {
+            color: var(--primary);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            font-size: 0.95rem;
+            font-family: inherit;
+            transition: all 0.25s ease;
+            background: var(--gray-50);
+            color: var(--gray-800);
+        }
+
+        .form-control:hover {
+            border-color: var(--gray-300);
+            background: white;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.15);
+        }
+
+        .form-control::placeholder {
+            color: var(--gray-400);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 120px;
+            padding-left: 16px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        @media (max-width: 480px) {
+            .form-row { grid-template-columns: 1fr; }
+            .form-body { padding: 32px 20px 24px; }
+        }
+
+        /* Category cards */
+        .category-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .category-option {
+            position: relative;
+        }
+
+        .category-option input {
+            position: absolute;
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .category-option label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 12px;
+            background: var(--gray-50);
+            border: 2px solid var(--gray-200);
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .category-option label:hover {
+            border-color: var(--gray-300);
+            transform: translateY(-2px);
+        }
+
+        .category-option input:checked + label {
+            border-color: var(--primary);
+            background: rgba(14, 165, 233, 0.08);
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.15);
+        }
+
+        .category-option .cat-icon {
+            font-size: 1.5rem;
+        }
+
+        .category-option .cat-name {
+            font-weight: 600;
+            color: var(--gray-700);
+            font-size: 0.8rem;
+        }
+
+        /* Priority pills */
+        .priority-pills {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .priority-pill {
+            flex: 1;
+            min-width: 70px;
+        }
+
+        .priority-pill input {
+            display: none;
+        }
+
+        .priority-pill label {
+            display: block;
+            padding: 10px 12px;
+            text-align: center;
+            border: 2px solid var(--gray-200);
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            font-size: 0.8rem;
+            background: white;
+        }
+
+        .priority-pill label:hover {
+            border-color: var(--gray-300);
+        }
+
+        .priority-pill.low input:checked + label {
+            border-color: #10b981;
+            background: #ecfdf5;
+            color: #059669;
+        }
+
+        .priority-pill.medium input:checked + label {
+            border-color: #3b82f6;
+            background: #eff6ff;
+            color: #2563eb;
+        }
+
+        .priority-pill.high input:checked + label {
+            border-color: #f59e0b;
+            background: #fffbeb;
+            color: #d97706;
+        }
+
+        .priority-pill.urgent input:checked + label {
+            border-color: #ef4444;
+            background: #fef2f2;
+            color: #dc2626;
+        }
+
+        /* Submit */
+        .btn-submit {
+            width: 100%;
+            padding: 16px;
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 8px;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.4);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-submit.loading .btn-text { display: none; }
+        .btn-submit .spinner { display: none; }
+        .btn-submit.loading .spinner {
+            display: inline-block;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Footer */
+        .form-footer {
+            text-align: center;
+            padding: 20px;
+            background: var(--gray-50);
+            border-top: 1px solid var(--gray-100);
+        }
+
+        .form-footer p {
+            color: var(--gray-500);
+            font-size: 0.8rem;
+        }
+
+        .form-footer a {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        /* Success */
+        .success-message {
+            display: none;
+            text-align: center;
+            padding: 50px 32px;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .success-checkmark {
+            width: 90px;
+            height: 90px;
+            background: linear-gradient(135deg, #10b981, #34d399);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            box-shadow: 0 15px 35px rgba(16, 185, 129, 0.3);
+            animation: bounceIn 0.6s ease;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .success-checkmark i {
+            font-size: 2.5rem;
+            color: white;
+        }
+
+        .success-message h2 {
+            color: var(--gray-800);
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+
+        .success-message p {
+            color: var(--gray-500);
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .ticket-code {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--gray-800), var(--gray-700));
+            color: white;
+            padding: 14px 28px;
+            border-radius: 10px;
+            font-family: 'SF Mono', 'Monaco', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 24px;
+        }
+
+        .btn-new-ticket {
+            padding: 12px 24px;
+            background: var(--gray-100);
+            color: var(--gray-700);
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-new-ticket:hover {
+            background: var(--gray-200);
+        }
+
+        .form-content.hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="bg-container"></div>
+    <div class="bg-overlay"></div>
+    <div class="floating-elements">
+        <div class="float-item"></div>
+        <div class="float-item"></div>
+        <div class="float-item"></div>
+        <div class="float-item"></div>
+        <div class="float-item"></div>
+    </div>
+
+    <div class="form-wrapper">
+        <div class="brand">
+            <div class="brand-logo">💬</div>
+            <h2>Centro de Soporte</h2>
+        </div>
+
+        <div class="form-container">
+            <div class="form-header">
+                <h1><i class="fas fa-headset"></i> ¿Necesitas ayuda?</h1>
+                <p>Estamos aquí para ayudarte</p>
+            </div>
+
+            <div class="form-body">
+                <form id="ticket-form" class="form-content">
+                    <div class="welcome-text">
+                        <div class="emoji">👋</div>
+                        <h3>¡Hola! Cuéntanos tu problema</h3>
+                        <p>Completa el formulario y te responderemos pronto</p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Tu nombre <span class="required">*</span></label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-user"></i>
+                                <input type="text" name="contact_name" class="form-control" 
+                                       placeholder="Nombre completo" required>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Tu email <span class="required">*</span></label>
+                            <div class="input-wrapper">
+                                <i class="fas fa-envelope"></i>
+                                <input type="email" name="contact_email" class="form-control" 
+                                       placeholder="email@ejemplo.com" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Teléfono (opcional)</label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-phone"></i>
+                            <input type="tel" name="contact_phone" class="form-control" 
+                                   placeholder="+52 123 456 7890">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>¿En qué podemos ayudarte? <span class="required">*</span></label>
+                        <div class="category-grid">
+                            <div class="category-option">
+                                <input type="radio" name="category_id" value="1" id="cat-tech" required>
+                                <label for="cat-tech">
+                                    <span class="cat-icon">🔧</span>
+                                    <span class="cat-name">Soporte Técnico</span>
+                                </label>
+                            </div>
+                            <div class="category-option">
+                                <input type="radio" name="category_id" value="2" id="cat-sales">
+                                <label for="cat-sales">
+                                    <span class="cat-icon">💰</span>
+                                    <span class="cat-name">Ventas</span>
+                                </label>
+                            </div>
+                            <div class="category-option">
+                                <input type="radio" name="category_id" value="3" id="cat-billing">
+                                <label for="cat-billing">
+                                    <span class="cat-icon">📄</span>
+                                    <span class="cat-name">Facturación</span>
+                                </label>
+                            </div>
+                            <div class="category-option">
+                                <input type="radio" name="category_id" value="4" id="cat-general" checked>
+                                <label for="cat-general">
+                                    <span class="cat-icon">💬</span>
+                                    <span class="cat-name">Pregunta General</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>¿Qué tan urgente es? </label>
+                        <div class="priority-pills">
+                            <div class="priority-pill low">
+                                <input type="radio" name="priority" value="low" id="pri-low">
+                                <label for="pri-low">🟢 Baja</label>
+                            </div>
+                            <div class="priority-pill medium">
+                                <input type="radio" name="priority" value="medium" id="pri-medium" checked>
+                                <label for="pri-medium">🔵 Normal</label>
+                            </div>
+                            <div class="priority-pill high">
+                                <input type="radio" name="priority" value="high" id="pri-high">
+                                <label for="pri-high">🟠 Alta</label>
+                            </div>
+                            <div class="priority-pill urgent">
+                                <input type="radio" name="priority" value="urgent" id="pri-urgent">
+                                <label for="pri-urgent">🔴 Urgente</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Asunto <span class="required">*</span></label>
+                        <div class="input-wrapper">
+                            <i class="fas fa-heading"></i>
+                            <input type="text" name="title" class="form-control" 
+                                   placeholder="Resume tu problema en pocas palabras" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Cuéntanos más detalles <span class="required">*</span></label>
+                        <textarea name="description" class="form-control" 
+                                  placeholder="Describe tu problema o pregunta con el mayor detalle posible. Esto nos ayudará a darte una mejor respuesta." required></textarea>
+                    </div>
+
+                    <input type="hidden" name="source" value="external">
+                    
+                    <button type="submit" class="btn-submit">
+                        <span class="btn-text"><i class="fas fa-paper-plane"></i> Enviar Ticket</span>
+                        <i class="fas fa-spinner spinner"></i>
+                    </button>
+                </form>
+
+                <!-- Success -->
+                <div class="success-message" id="success-message">
+                    <div class="success-checkmark">
+                        <i class="fas fa-check"></i>
+                    </div>
+                    <h2>¡Mensaje Enviado!</h2>
+                    <p>Hemos recibido tu solicitud. Nuestro equipo<br>te contactará lo antes posible.</p>
+                    <div class="ticket-code" id="ticket-number">TK-20260105-XXXX</div>
+                    <br><br>
+                    <button onclick="resetForm()" class="btn-new-ticket">
+                        <i class="fas fa-plus"></i> Enviar otro mensaje
+                    </button>
+                </div>
+            </div>
+
+            <div class="form-footer">
+                <p>¿Tienes dudas? Escríbenos a <a href="mailto:soporte@tuempresa.com">soporte@tuempresa.com</a></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = './api/tickets.php';
+        
+        // URL params (para pre-llenar desde GHL)
+        const urlParams = new URLSearchParams(window.location.search);
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            if (urlParams.get('name')) {
+                document.querySelector('[name="contact_name"]').value = urlParams.get('name');
+            }
+            if (urlParams.get('email')) {
+                document.querySelector('[name="contact_email"]').value = urlParams.get('email');
+            }
+            if (urlParams.get('phone')) {
+                document.querySelector('[name="contact_phone"]').value = urlParams.get('phone');
+            }
+            
+            // GHL contact ID
+            if (urlParams.get('contact_id')) {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'ghl_contact_id';
+                input.value = urlParams.get('contact_id');
+                document.getElementById('ticket-form').appendChild(input);
+            }
+        });
+
+        document.getElementById('ticket-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.querySelector('.btn-submit');
+            btn.classList.add('loading');
+            btn.disabled = true;
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            try {
+                const response = await fetch(`${API_URL}?action=create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('ticket-number').textContent = result.data.ticket_number;
+                    document.querySelector('.form-content').classList.add('hidden');
+                    document.getElementById('success-message').classList.add('show');
+                    
+                    // Notificar a GHL si está embebido
+                    if (window.parent !== window) {
+                        window.parent.postMessage({
+                            type: 'ticket_created',
+                            ticketNumber: result.data.ticket_number,
+                            ticketId: result.data.id
+                        }, '*');
+                    }
+                } else {
+                    alert('Error: ' + (result.error || 'No se pudo enviar el mensaje'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error de conexión. Intenta de nuevo.');
+            } finally {
+                btn.classList.remove('loading');
+                btn.disabled = false;
+            }
+        });
+
+        function resetForm() {
+            document.getElementById('ticket-form').reset();
+            document.querySelector('.form-content').classList.remove('hidden');
+            document.getElementById('success-message').classList.remove('show');
+        }
+    </script>
+</body>
+</html>
