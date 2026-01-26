@@ -1,300 +1,381 @@
-<?php
+﻿<?php
+
 /**
  * Funciones de Notificación GHL
  * Email y Tareas para usuarios asignados
  */
 
+// Incluir ghl.php una sola vez
+require_once __DIR__ . '/ghl.php';
+
 // Configuración GHL (si no están definidas)
 if (!defined('GHL_API_BASE')) {
     define('GHL_API_BASE', 'https://services.leadconnectorhq.com');
 }
+
 if (!defined('GHL_API_KEY')) {
     define('GHL_API_KEY', 'pit-2c52c956-5347-4a29-99a8-723a0e2d4afd');
 }
+
 if (!defined('GHL_API_VERSION')) {
     define('GHL_API_VERSION', '2021-07-28');
 }
+
 if (!defined('GHL_LOCATION_ID')) {
     define('GHL_LOCATION_ID', 'sBhcSc6UurgGMeTV10TC');
 }
 
-// Log file path
-define('NOTIFICATION_LOG', __DIR__ . '/../logs/notifications.log');
+// Log file path - absolute path for Windows
+define('NOTIFICATION_LOG', 'C:\\laragon\\www\\Ticketing System\\logs\\notifications.log');
+
+// Log de inclusión
+file_put_contents(NOTIFICATION_LOG, date('Y-m-d H:i:s') . " - ghl-notifications.php included\n", FILE_APPEND);
 
 /**
  * Helper para log
  */
 function notifLog($message) {
-    @file_put_contents(NOTIFICATION_LOG, date('Y-m-d H:i:s') . " - $message\n", FILE_APPEND);
+    file_put_contents(NOTIFICATION_LOG, date('Y-m-d H:i:s') . " - $message\n", FILE_APPEND);
 }
 
 /**
- * Llamada a la API de GHL (versión para notificaciones)
+ * Generar link de seguimiento del ticket
  */
-function ghlNotificationApiCall($endpoint, $method = 'GET', $data = null, $locationId = null) {
-    $url = GHL_API_BASE . $endpoint;
+function generateTrackingLink($ticketId, $ticketNumber, $pdo = null) {
+    // Generar token
+    $token = hash('sha256', $ticketId . $ticketNumber . time());
     
-    $headers = [
-        'Authorization: Bearer ' . GHL_API_KEY,
-        'Version: ' . GHL_API_VERSION,
-        'Content-Type: application/json',
-        'Accept: application/json'
-    ];
-    
-    if ($locationId) {
-        $headers[] = 'Location: ' . $locationId;
-    }
-    
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-    
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST, true);
-        if ($data) {
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    // Guardar token en BD
+    if ($pdo) {
+        try {
+            $stmt = $pdo->prepare("
+                INSERT INTO ticket_tracking_tokens (ticket_id, token, created_at) 
+                VALUES (?, ?, NOW())
+                ON DUPLICATE KEY UPDATE token = VALUES(token), created_at = NOW()
+            ");
+            $stmt->execute([$ticketId, $token]);
+        } catch (Exception $e) {
+            notifLog("Error guardando token: " . $e->getMessage());
         }
     }
     
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-    
-    notifLog("API Call: $method $endpoint - HTTP $httpCode");
-    
-    if ($error) {
-        notifLog("CURL Error: $error");
-        return ['error' => $error, 'httpCode' => $httpCode];
-    }
-    
-    $decoded = json_decode($response, true);
-    if (!$decoded) {
-        notifLog("Response decode failed: " . substr($response, 0, 200));
-    }
-    
-    return $decoded ?: ['error' => 'Invalid response', 'httpCode' => $httpCode];
+    // URL del cliente
+    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
+    return $baseUrl . '/ticket-tracking.php?id=' . $ticketNumber . '&token=' . substr($token, 0, 20);
 }
 
 /**
- * Enviar notificación por email al usuario asignado
+ * Actualizar custom fields en contacto GHL
  */
-function sendEmailNotification($pdo, $userId, $ticketData) {
-    notifLog("=== INICIO sendEmailNotification userId: $userId ===");
-    
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->execute([$userId]);
-    $user = $stmt->fetch();
-    
-    if (!$user || empty($user['email'])) {
-        notifLog("ERROR: Usuario $userId no encontrado o sin email");
-        return ['success' => false, 'error' => 'Usuario no encontrado o sin email'];
+function updateContactCustomFields($contactId, $customFields = []) {
+    if (empty($customFields)) {
+        return ['success' => true, 'message' => 'No custom fields to update'];
     }
     
-    notifLog("Usuario: {$user['name']} ({$user['email']})");
+    $updateData = [
+        'customFields' => $customFields
+    ];
     
-    // Buscar o crear contacto en GHL
-    $contactId = findOrCreateContact($user['email'], $user['name']);
+    $result = ghlApiCall('/contacts/' . $contactId, 'PUT', $updateData, GHL_LOCATION_ID);
     
-    if (!$contactId) {
-        return ['success' => false, 'error' => 'No se pudo obtener/crear contacto en GHL'];
-    }
+    notifLog("Custom fields actualizados para contacto {$contactId}: " . json_encode($result));
     
-    // Enviar email
-    notifLog("Enviando email...");
-    $emailData = [
-        'type' => 'Email',
+    return [
+        'success' => !isset($result['error']),
         'contactId' => $contactId,
-        'subject' => 'Nuevo Ticket Asignado: ' . $ticketData['ticket_number'],
-        'html' => buildEmailTemplate($ticketData, $user)
-    ];
-    
-    $result = ghlNotificationApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
-    notifLog("Resultado email: " . json_encode($result));
-    
-    return [
-        'success' => !isset($result['error']),
-        'type' => 'email',
         'result' => $result
     ];
 }
 
 /**
- * Buscar o crear contacto en GHL
+ * Enviar mensaje WhatsApp directo
  */
-function findOrCreateContact($email, $name) {
-    notifLog("Buscando/creando contacto para: $email");
+function sendWhatsAppMessage($pdo, $contactId, $contactPhone, $messageText) {
+    $messageData = [
+        'type' => 'WhatsApp',
+        'contactId' => $contactId,
+        'message' => $messageText,
+        'status' => 'pending'
+    ];
     
-    // Primero intentar buscar por email usando search
-    $searchResult = ghlNotificationApiCall('/contacts/search/duplicate?locationId=' . GHL_LOCATION_ID . '&email=' . urlencode($email), 'GET', null, GHL_LOCATION_ID);
-    notifLog("Busqueda duplicado: " . json_encode($searchResult));
+    $result = ghlApiCall('/conversations/messages', 'POST', $messageData, GHL_LOCATION_ID);
     
-    if (!empty($searchResult['contact']['id'])) {
-        notifLog("Contacto encontrado via search: " . $searchResult['contact']['id']);
-        return $searchResult['contact']['id'];
-    }
+    notifLog("WhatsApp enviado a {$contactPhone}: " . $messageText);
     
-    // Si no existe, crearlo
-    notifLog("Creando nuevo contacto...");
-    $createResult = ghlNotificationApiCall('/contacts/', 'POST', [
-        'email' => $email,
-        'name' => $name,
-        'locationId' => GHL_LOCATION_ID
-    ], GHL_LOCATION_ID);
-    
-    notifLog("Resultado crear: " . json_encode($createResult));
-    
-    // Si ya existe (duplicado), extraer el ID del error
-    if (!empty($createResult['meta']['contactId'])) {
-        notifLog("Contacto ya existia, usando ID: " . $createResult['meta']['contactId']);
-        return $createResult['meta']['contactId'];
-    }
-    
-    if (!empty($createResult['contact']['id'])) {
-        notifLog("Contacto creado: " . $createResult['contact']['id']);
-        return $createResult['contact']['id'];
-    }
-    
-    notifLog("ERROR: No se pudo obtener contactId");
-    return null;
+    return [
+        'success' => !isset($result['error']),
+        'contactId' => $contactId,
+        'result' => $result
+    ];
 }
 
 /**
- * Crear tarea en GHL para el usuario asignado
+ * Enviar WhatsApp usando template
  */
-function createGHLTask($pdo, $userId, $ticketData) {
-    notifLog("=== INICIO createGHLTask userId: $userId ===");
+function sendWhatsAppTemplate($pdo, $contactPhone, $templateName, $variables = []) {
+    // Buscar contacto - usar endpoint correcto con query parameter
+    $searchResult = ghlApiCall('/contacts/?locationId=' . GHL_LOCATION_ID . '&query=' . urlencode($contactPhone), 'GET', null, GHL_LOCATION_ID);
     
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
-    $stmt->execute([$userId]);
-    $user = $stmt->fetch();
-    
-    if (!$user) {
-        notifLog("ERROR: Usuario no encontrado");
-        return ['success' => false, 'error' => 'Usuario no encontrado'];
+    $contactId = null;
+    if (!empty($searchResult['contacts'][0]['id'])) {
+        $contactId = $searchResult['contacts'][0]['id'];
+    } else {
+        $createResult = ghlApiCall('/contacts/', 'POST', [
+            'phone' => $contactPhone,
+            'locationId' => GHL_LOCATION_ID
+        ], GHL_LOCATION_ID);
+        
+        if (!empty($createResult['contact']['id'])) {
+            $contactId = $createResult['contact']['id'];
+        }
     }
     
-    notifLog("Usuario: {$user['name']}");
-    
-    // Buscar o crear contacto
-    $contactId = findOrCreateContact($user['email'], $user['name']);
-    
     if (!$contactId) {
-        notifLog("ERROR: No se pudo obtener/crear contacto para tarea");
+        notifLog("Error: No se pudo obtener/crear contacto para {$contactPhone}");
         return ['success' => false, 'error' => 'No se pudo obtener/crear contacto en GHL'];
     }
     
-    notifLog("Creando tarea para contacto: $contactId");
+    // Enviar WhatsApp con template
+    // Las variables deben ser un array ordenado para el template
+    $variableValues = [];
+    if (is_array($variables)) {
+        $variableValues = array_values($variables);
+    }
     
-    $dueDate = !empty($ticketData['due_date']) 
-        ? $ticketData['due_date'] 
-        : date('Y-m-d', strtotime('+3 days'));
-    
-    $priorityMap = [
-        'urgent' => 'URGENTE',
-        'high' => 'Alta',
-        'medium' => 'Media',
-        'low' => 'Baja'
-    ];
-    $priorityLabel = $priorityMap[$ticketData['priority'] ?? 'medium'] ?? 'Media';
-    
-    $taskData = [
-        'title' => "Ticket {$ticketData['ticket_number']}: {$ticketData['title']}",
-        'body' => "Ticket Asignado\n\nNumero: {$ticketData['ticket_number']}\nPrioridad: {$priorityLabel}\nDescripcion:\n{$ticketData['description']}",
-        'dueDate' => $dueDate . 'T12:00:00Z',
-        'completed' => false,
-        'assignedTo' => $user['ghl_user_id'] ?? null
+    $messageData = [
+        'type' => 'WhatsApp',
+        'contactId' => $contactId,
+        'templateName' => $templateName,
+        'variables' => $variableValues,
+        'status' => 'pending'
     ];
     
-    $result = ghlNotificationApiCall("/contacts/{$contactId}/tasks", 'POST', $taskData, GHL_LOCATION_ID);
-    notifLog("Resultado tarea: " . json_encode($result));
+    notifLog("Enviando mensaje con template: $templateName, variables: " . json_encode($variableValues));
+    $result = ghlApiCall('/conversations/messages', 'POST', $messageData, GHL_LOCATION_ID);
+    
+    notifLog("WhatsApp enviado a {$contactPhone} con template {$templateName}: " . json_encode($result));
     
     return [
         'success' => !isset($result['error']),
-        'type' => 'task',
+        'contactId' => $contactId,
         'result' => $result
     ];
 }
 
 /**
- * Template de email HTML
+ * Notificar ticket creado
  */
-function buildEmailTemplate($ticketData, $user) {
-    $priorityColors = [
-        'urgent' => '#dc3545',
-        'high' => '#fd7e14',
-        'medium' => '#ffc107',
-        'low' => '#28a745'
-    ];
-    $priorityLabels = [
-        'urgent' => 'URGENTE',
-        'high' => 'Alta',
-        'medium' => 'Media',
-        'low' => 'Baja'
-    ];
-    
-    $priority = $ticketData['priority'] ?? 'medium';
-    $priorityColor = $priorityColors[$priority] ?? '#ffc107';
-    $priorityLabel = $priorityLabels[$priority] ?? 'Media';
-    
-    $dueDate = !empty($ticketData['due_date']) 
-        ? date('d/m/Y', strtotime($ticketData['due_date']))
-        : 'No especificada';
-    
-    $description = nl2br(htmlspecialchars($ticketData['description'] ?? ''));
-    
-    return "
-    <html>
-    <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
-        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-            <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0;'>
-                <h1 style='margin:0;'>Nuevo Ticket Asignado</h1>
-            </div>
-            <div style='background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef;'>
-                <p>Hola <strong>{$user['name']}</strong>,</p>
-                <p>Se te ha asignado un nuevo ticket:</p>
-                
-                <div style='background: white; border-radius: 8px; padding: 20px; margin: 15px 0;'>
-                    <h2 style='margin-top:0; color: #333;'>{$ticketData['title']}</h2>
-                    <p><strong>Numero:</strong> {$ticketData['ticket_number']}</p>
-                    <p><strong>Prioridad:</strong> <span style='background:{$priorityColor}; color:white; padding: 3px 10px; border-radius: 10px;'>{$priorityLabel}</span></p>
-                    <p><strong>Fecha limite:</strong> {$dueDate}</p>
-                    <hr style='border: none; border-top: 1px solid #eee;'>
-                    <p><strong>Descripcion:</strong></p>
-                    <p style='background: #f8f9fa; padding: 15px; border-radius: 5px;'>{$description}</p>
-                </div>
-            </div>
-            <div style='text-align: center; padding: 20px; color: #6c757d; font-size: 12px;'>
-                <p>Sistema de Ticketing - Mensaje automatico</p>
-            </div>
-        </div>
-    </body>
-    </html>";
+function notifyTicketCreatedWA($pdo, $ticketData) {
+    try {
+        notifLog("=== INICIANDO notifyTicketCreatedWA ===");
+        
+        if (empty($ticketData['contact_phone'])) {
+            notifLog("Error: Sin teléfono en ticketData");
+            return ['success' => false, 'error' => 'Sin teléfono'];
+        }
+        
+        notifLog("INICIANDO: Notificar ticket creado - {$ticketData['ticket_number']} - Teléfono: {$ticketData['contact_phone']}");
+        
+        // Generar link
+        $trackingLink = generateTrackingLink($ticketData['id'], $ticketData['ticket_number'], $pdo);
+        
+        notifLog("Tracking link generado: " . $trackingLink);
+        
+        // Buscar o crear contacto
+        $searchResult = ghlApiCall('/contacts/?locationId=' . GHL_LOCATION_ID . '&query=' . urlencode($ticketData['contact_phone']), 'GET', null, GHL_LOCATION_ID);
+        
+        notifLog("Resultado búsqueda: " . json_encode($searchResult));
+        
+        $contactId = null;
+        if (!empty($searchResult['contacts'][0]['id'])) {
+            $contactId = $searchResult['contacts'][0]['id'];
+            notifLog("Contacto encontrado: $contactId");
+        } else {
+            notifLog("Contacto no encontrado, creando nuevo...");
+            $createResult = ghlApiCall('/contacts/', 'POST', [
+                'phone' => $ticketData['contact_phone'],
+                'name' => $ticketData['contact_name'] ?? 'Cliente',
+                'email' => $ticketData['contact_email'] ?? null,
+                'locationId' => GHL_LOCATION_ID
+            ], GHL_LOCATION_ID);
+            
+            notifLog("Contacto create result: " . json_encode($createResult));
+            
+            // Verificar diferentes estructuras de respuesta
+            if (!empty($createResult['contact']['id'])) {
+                $contactId = $createResult['contact']['id'];
+                notifLog("Contacto creado (estructura 1): $contactId");
+            } elseif (!empty($createResult['meta']['contactId'])) {
+                $contactId = $createResult['meta']['contactId'];
+                notifLog("Contacto creado (estructura 2): $contactId");
+            } else {
+                notifLog("ERROR: Respuesta de create no tiene contactId: " . json_encode($createResult));
+            }
+        }
+        
+        if (!$contactId) {
+            notifLog("Error: No se pudo crear contacto para {$ticketData['contact_phone']}");
+            return ['success' => false, 'error' => 'No se pudo crear contacto'];
+        }
+        
+        // ACTUALIZAR custom fields ANTES de enviar el mensaje
+        notifLog("Actualizando custom fields para contacto: " . $contactId);
+        $customFields = [
+            [
+                'id' => 'ticket_id_field',
+                'key' => 'ticket_id',
+                'field_value' => $ticketData['ticket_number'] ?? ''
+            ],
+            [
+                'id' => 'link_seguimiento_field',
+                'key' => 'link_seguimiento',
+                'field_value' => $trackingLink
+            ]
+        ];
+        updateContactCustomFields($contactId, $customFields);
+        
+        // Enviar WhatsApp con mensaje personalizado
+        $messageText = "¡Hola! Tu ticket " . $ticketData['ticket_number'] . " ha sido creado exitosamente. Puedes consultarlo en: " . $trackingLink;
+        notifLog("Enviando WhatsApp: " . $messageText);
+        $result = sendWhatsAppMessage($pdo, $contactId, $ticketData['contact_phone'], $messageText);
+        
+        notifLog("FIN: Notificar ticket creado - Result: " . json_encode($result));
+        
+        return [
+            'success' => $result['success'],
+            'contactId' => $contactId,
+            'trackingLink' => $trackingLink
+        ];
+    } catch (Exception $e) {
+        notifLog("EXCEPCIÓN en notifyTicketCreatedWA: " . $e->getMessage() . " - Línea: " . $e->getLine());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
 }
 
 /**
- * Funcion principal para notificar asignacion
+ * Notificar cuando información está pendiente
  */
-function notifyTicketAssignment($pdo, $userId, $ticketData) {
-    notifLog("========================================");
-    notifLog("NOTIFICACION DE TICKET ASIGNADO");
-    notifLog("Ticket: " . ($ticketData['ticket_number'] ?? 'N/A'));
-    notifLog("Usuario destino: $userId");
-    notifLog("========================================");
+function notifyPendingInfo($pdo, $ticketData) {
+    $contactPhone = $ticketData['contact_phone'] ?? null;
+    $ticketNumber = $ticketData['ticket_number'] ?? 'UNKNOWN';
     
-    $results = [];
+    if (!$contactPhone) {
+        notifLog("notifyPendingInfo: No hay teléfono de contacto para ticket $ticketNumber");
+        return ['success' => false, 'error' => 'No contact phone'];
+    }
     
-    // Enviar email
-    $results['email'] = sendEmailNotification($pdo, $userId, $ticketData);
+    notifLog("=== INICIANDO notifyPendingInfo ===");
+    notifLog("INICIANDO: Información pendiente - $ticketNumber - Teléfono: $contactPhone");
     
-    // Crear tarea en GHL
-    $results['task'] = createGHLTask($pdo, $userId, $ticketData);
+    notifLog("Iniciando búsqueda de contacto");
     
-    notifLog("RESULTADO FINAL: " . json_encode($results));
-    notifLog("========================================\n");
+    // PRIMERO: Buscar o crear contacto en GHL
+    $searchResult = ghlApiCall('/contacts/?locationId=' . GHL_LOCATION_ID . '&query=' . urlencode($contactPhone), 'GET', null, GHL_LOCATION_ID);
     
-    return $results;
+    notifLog("Resultado búsqueda: " . json_encode($searchResult));
+    
+    $contactId = null;
+    if (!empty($searchResult['contacts'][0]['id'])) {
+        $contactId = $searchResult['contacts'][0]['id'];
+        notifLog("Contacto encontrado: " . $contactId);
+    } else {
+        notifLog("Contacto no encontrado, creando nuevo");
+        $createResult = ghlApiCall('/contacts/', 'POST', [
+            'phone' => $contactPhone,
+            'locationId' => GHL_LOCATION_ID
+        ], GHL_LOCATION_ID);
+        
+        notifLog("Resultado creación contacto: " . json_encode($createResult));
+        
+        if (!empty($createResult['contact']['id'])) {
+            $contactId = $createResult['contact']['id'];
+            notifLog("Contacto creado: " . $contactId);
+        }
+    }
+    
+    if (!$contactId) {
+        notifLog("Error: No se pudo obtener/crear contacto para {$contactPhone}");
+        return ['success' => false, 'error' => 'No contact phone'];
+    }
+    
+    // SEGUNDO: Actualizar custom fields en GHL ANTES de enviar el mensaje
+    $customFields = [
+        [
+            'id' => 'ticket_id_field',
+            'key' => 'ticket_id',
+            'field_value' => $ticketData['ticket_number'] ?? $ticketNumber
+        ],
+        [
+            'id' => 'informacion_pendiente_field',
+            'key' => 'informacion_pendiente',
+            'field_value' => $ticketData['informacion_pendiente'] ?? ''
+        ],
+        [
+            'id' => 'link_seguimiento_field',
+            'key' => 'link_seguimiento',
+            'field_value' => $ticketData['link_seguimiento'] ?? ''
+        ]
+    ];
+    
+    notifLog("Actualizando custom fields para contacto: " . $contactId);
+    updateContactCustomFields($contactId, $customFields);
+    
+    // TERCERO: Enviar WhatsApp con template copy_info_pendiente2
+    $variables = [
+        'ticket_id' => $ticketData['ticket_number'] ?? $ticketNumber,
+        'informacion_pendiente' => $ticketData['informacion_pendiente'] ?? '',
+        'link_seguimiento' => $ticketData['link_seguimiento'] ?? ''
+    ];
+    
+    $templateResult = sendWhatsAppTemplate($pdo, $contactPhone, 'copy_info_pendiente2', $variables);
+    
+    return $templateResult;
+}
+
+/**
+ * Notificar cuando ticket está en proceso
+ */
+function notifyInProgress($pdo, $ticketData) {
+    $contactPhone = $ticketData['contact_phone'] ?? null;
+    $ticketNumber = $ticketData['ticket_number'] ?? 'UNKNOWN';
+    
+    if (!$contactPhone) {
+        notifLog("notifyInProgress: No hay teléfono de contacto para ticket $ticketNumber");
+        return ['success' => false, 'error' => 'No contact phone'];
+    }
+    
+    notifLog("=== INICIANDO notifyInProgress ===");
+    notifLog("INICIANDO: Ticket en proceso - $ticketNumber - Teléfono: $contactPhone");
+    
+    // PRIMERO: Buscar o crear contacto en GHL
+    $searchResult = ghlApiCall('/contacts/?locationId=' . GHL_LOCATION_ID . '&query=' . urlencode($contactPhone), 'GET', null, GHL_LOCATION_ID);
+    
+    $contactId = null;
+    if (!empty($searchResult['contacts'][0]['id'])) {
+        $contactId = $searchResult['contacts'][0]['id'];
+    } else {
+        $createResult = ghlApiCall('/contacts/', 'POST', [
+            'phone' => $contactPhone,
+            'locationId' => GHL_LOCATION_ID
+        ], GHL_LOCATION_ID);
+        
+        if (!empty($createResult['contact']['id'])) {
+            $contactId = $createResult['contact']['id'];
+        }
+    }
+    
+    if (!$contactId) {
+        notifLog("Error: No se pudo obtener/crear contacto para {$contactPhone}");
+        return ['success' => false, 'error' => 'No contact phone'];
+    }
+    
+    // SEGUNDO: Enviar WhatsApp con template en_desarrollo
+    $variables = [
+        'ticket_id' => $ticketData['ticket_number'] ?? $ticketNumber,
+        'link_seguimiento' => $ticketData['link_seguimiento'] ?? ''
+    ];
+    
+    $templateResult = sendWhatsAppTemplate($pdo, $contactPhone, 'en_desarrollo', $variables);
+    
+    return $templateResult;
 }

@@ -1,21 +1,55 @@
-<?php
+﻿<?php
 /**
  * API de Tickets - Sistema de Ticketing GHL
- * Endpoints RESTful para gestión de tickets
+ * Endpoints RESTful para gestiÃ³n de tickets
  */
+
+// Define absolute paths for logging
+define('LOGS_PATH', 'C:\\laragon\\www\\Ticketing System\\logs');
+
+// Error handling
+error_reporting(E_ALL);
+ini_set('display_errors', 1); // Cambiar a 1 para debug
+ini_set('log_errors', 1);
+ini_set('error_log', LOGS_PATH . '\\php_errors.log');
+
+set_error_handler(function($errno, $errstr, $errfile, $errline) {
+    error_log("PHP Error [$errno]: $errstr in $errfile:$errline");
+    if (defined('STDERR')) {
+        fwrite(STDERR, "PHP Error [$errno]: $errstr in $errfile:$errline\n");
+    }
+    http_response_code(500);
+    echo json_encode(['error' => 'Error del servidor: ' . $errstr]);
+    exit;
+});
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/ghl-notifications.php';
+
+// Verificar si la funciÃ³n existe
+if (!function_exists('notifyTicketCreatedWA')) {
+    throw new Exception('notifyTicketCreatedWA not loaded');
+}
+
 setCorsHeaders();
 
 $pdo = getConnection();
 $method = $_SERVER['REQUEST_METHOD'];
 $action = $_GET['action'] ?? '';
 
+// ROUTER EXECUTION TEST
+error_log('ROUTER EXECUTING: action=' . $action . ' at ' . date('Y-m-d H:i:s'));
+
 // Router simple
 switch ($action) {
+    case 'test-whatsapp':
+        testWhatsAppFlow($pdo);
+        break;
     case 'list':
         listTickets($pdo);
+        break;
+    case 'backlog':
+        getBacklogTickets($pdo);
         break;
     case 'get':
         getTicket($pdo, $_GET['id'] ?? 0);
@@ -35,15 +69,21 @@ switch ($action) {
     case 'comments':
         handleComments($pdo, $_GET['ticket_id'] ?? 0);
         break;
+    case 'tracking':
+        getTicketTracking($pdo, $_GET['id'] ?? '', $_GET['token'] ?? '');
+        break;
     case 'webhook':
         handleGHLWebhook($pdo);
         break;
+    case 'test-whatsapp':
+        testWhatsAppFlow($pdo, $_GET['ticket_id'] ?? 19);
+        break;
     default:
-        echo json_encode(['error' => 'Acción no válida', 'actions' => ['list', 'get', 'create', 'update', 'delete', 'stats', 'comments', 'webhook']]);
+        echo json_encode(['error' => 'AcciÃ³n no vÃ¡lida', 'actions' => ['list', 'get', 'create', 'update', 'delete', 'stats', 'comments', 'webhook', 'test-whatsapp']]);
 }
 
 /**
- * Listar tickets con filtros y paginación
+ * Listar tickets con filtros y paginaciÃ³n
  */
 function listTickets($pdo) {
     $page = (int)($_GET['page'] ?? 1);
@@ -58,6 +98,9 @@ function listTickets($pdo) {
     
     $where = [];
     $params = [];
+    
+    // Excluir tickets en backlog de la lista principal
+    $where[] = "(t.backlog = FALSE OR t.backlog IS NULL)";
     
     if ($status) {
         $where[] = "t.status = ?";
@@ -127,7 +170,45 @@ function listTickets($pdo) {
 }
 
 /**
- * Obtener un ticket específico
+ * Obtener tickets del backlog (todos los tickets marcados como backlog)
+ */
+function getBacklogTickets($pdo) {
+    $backlogType = $_GET['type'] ?? 'consultoria'; // 'consultoria' o 'aib'
+    
+    $sql = "SELECT t.*, 
+            c.name as category_name, c.color as category_color,
+            p.name as project_name,
+            u1.name as created_by_name,
+            u2.name as assigned_to_name,
+            (SELECT COUNT(*) FROM comments WHERE ticket_id = t.id) as comment_count
+            FROM tickets t
+            LEFT JOIN categories c ON t.category_id = c.id
+            LEFT JOIN projects p ON t.project_id = p.id
+            LEFT JOIN users u1 ON t.created_by = u1.id
+            LEFT JOIN users u2 ON t.assigned_to = u2.id
+            WHERE t.backlog = TRUE AND t.backlog_type = ?
+            ORDER BY 
+                CASE t.priority 
+                    WHEN 'urgent' THEN 1 
+                    WHEN 'high' THEN 2 
+                    WHEN 'medium' THEN 3 
+                    ELSE 4 
+                END,
+                t.created_at DESC";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$backlogType]);
+    $tickets = $stmt->fetchAll();
+    
+    echo json_encode([
+        'success' => true,
+        'data' => $tickets,
+        'total' => count($tickets)
+    ]);
+}
+
+/**
+ * Obtener un ticket especÃ­fico
  */
 function getTicket($pdo, $id) {
     $sql = "SELECT t.*, 
@@ -161,7 +242,9 @@ function getTicket($pdo, $id) {
     $ticket['comments'] = $stmt->fetchAll();
     
     // Obtener historial
-    $sql = "SELECT al.*, u.name as user_name
+    $sql = "SELECT al.*, 
+            u.name as user_name,
+            (SELECT name FROM users WHERE id = al.new_value LIMIT 1) as assigned_to_name
             FROM activity_log al
             LEFT JOIN users u ON al.user_id = u.id
             WHERE al.ticket_id = ?
@@ -186,157 +269,304 @@ function getTicket($pdo, $id) {
  * Crear nuevo ticket
  */
 function createTicket($pdo) {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    if (!$input) {
-        $input = $_POST;
+    try {
+        // Add a custom header to prove execution
+        header('X-Tickets-PHP-Executed: yes');
+        
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (!$input) {
+            $input = $_POST;
+        }
+        
+        // Validaciones
+        if (empty($input['title']) || empty($input['description'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'TÃ­tulo y descripciÃ³n son requeridos']);
+            return;
+        }
+        
+        // Generar nÃºmero de ticket Ãºnico con prefijo segÃºn work_type
+        $workType = $input['work_type'] ?? 'puntual';
+        $prefixMap = ['puntual' => 'P', 'recurrente' => 'R', 'soporte' => 'S'];
+        $prefix = $prefixMap[$workType] ?? 'P';
+        $ticketNumber = $prefix . '-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
+        
+        $sql = "INSERT INTO tickets (
+                    ticket_number, title, description, status, priority, 
+                    category_id, created_by, assigned_to, source, client_id,
+                    work_type, start_date, end_date, hours_dedicated,
+                    max_delivery_date, project_id, briefing_url, video_url,
+                    monthly_hours, score,
+                    contact_name, contact_email, contact_phone,
+                    ghl_form_id, ghl_contact_id, due_date, backlog, backlog_type
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([
+            $ticketNumber,
+            $input['title'],
+            $input['description'],
+            $input['status'] ?? 'open',
+            $input['priority'] ?? 'medium',
+            $input['category_id'] ?? null,
+            $input['created_by'] ?? null,
+            $input['assigned_to'] ?? null,
+            $input['source'] ?? 'internal',
+            $input['client_id'] ?? null,
+            $workType,
+            $input['start_date'] ?? null,
+            $input['end_date'] ?? null,
+            $input['hours_dedicated'] ?? 0,
+            $input['max_delivery_date'] ?? null,
+            $input['project_id'] ?? null,
+            $input['briefing_url'] ?? null,
+            $input['video_url'] ?? null,
+            $input['monthly_hours'] ?? 0,
+            $input['score'] ?? null,
+            $input['contact_name'] ?? null,
+            $input['contact_email'] ?? null,
+            $input['contact_phone'] ?? null,
+            $input['ghl_form_id'] ?? null,
+            $input['ghl_contact_id'] ?? null,
+            $input['due_date'] ?? null,
+            isset($input['backlog']) ? (int)$input['backlog'] : 0,
+            $input['backlog_type'] ?? null
+        ]);
+        
+        $ticketId = $pdo->lastInsertId();
+        
+        // Log activity (si la funciÃ³n existe)
+        if (function_exists('logActivity')) {
+            try {
+                logActivity($pdo, $ticketId, $input['created_by'] ?? null, 'ticket_created', null, 'Ticket creado');
+            } catch (Exception $e) {
+                error_log('Activity log error: ' . $e->getMessage());
+            }
+        }
+        
+        // Notificar si es backlog
+        $notificationResult = null;
+        if (!empty($input['backlog'])) {
+            // Notificar a Alfonso (3) y Alicia (14) sobre nuevo ticket en backlog
+            $ticketData = [
+                'id' => $ticketId,
+                'ticket_number' => $ticketNumber,
+                'title' => $input['title'],
+                'description' => $input['description'],
+                'priority' => $input['priority'] ?? 'medium',
+                'due_date' => $input['due_date'] ?? null
+            ];
+            
+            try {
+                // Notificar a Alfonso
+                if (function_exists('notifyTicketAssignment')) {
+                    notifyTicketAssignment($pdo, 3, $ticketData);
+                    notifyTicketAssignment($pdo, 14, $ticketData);
+                }
+            } catch (Exception $e) {
+                error_log('Notification error: ' . $e->getMessage());
+            }
+        }
+        
+        // Test: Log todos los inputs recibidos
+        file_put_contents(LOGS_PATH . '\\test_input.txt', date('Y-m-d H:i:s') . " - Input recibido:\n" . json_encode($input) . "\n", FILE_APPEND);
+        
+        // Notificar al cliente por WhatsApp si tiene telÃ©fono
+        if (!empty($input['contact_phone'])) {
+            file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Iniciando notificaciÃ³n WhatsApp\n", FILE_APPEND);
+            
+            try {
+                file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - function_exists test\n", FILE_APPEND);
+                $exists = function_exists('notifyTicketCreatedWA');
+                file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - notifyTicketCreatedWA exists: " . ($exists ? 'YES' : 'NO') . "\n", FILE_APPEND);
+                
+                $fullTicketData = [
+                    'id' => $ticketId,
+                    'ticket_number' => $ticketNumber,
+                    'title' => $input['title'],
+                    'description' => $input['description'],
+                    'priority' => $input['priority'] ?? 'medium',
+                    'contact_name' => $input['contact_name'] ?? 'Cliente',
+                    'contact_email' => $input['contact_email'] ?? null,
+                    'contact_phone' => $input['contact_phone']
+                ];
+                
+                if ($exists) {
+                    file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Llamando notifyTicketCreatedWA\n", FILE_APPEND);
+                    $whatsappResult = notifyTicketCreatedWA($pdo, $fullTicketData);
+                    file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Resultado: " . json_encode($whatsappResult) . "\n", FILE_APPEND);
+                    $notificationResult = array_merge($notificationResult ?? [], ['whatsapp' => $whatsappResult]);
+                }
+            } catch (Exception $e) {
+                file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Exception: " . $e->getMessage() . "\n", FILE_APPEND);
+                error_log('WhatsApp notification error: ' . $e->getMessage());
+            }
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Ticket creado exitosamente',
+            'data' => [
+                'id' => $ticketId,
+                'ticket_number' => $ticketNumber
+            ],
+            'notifications' => $notificationResult
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Error al crear ticket: ' . $e->getMessage()
+        ]);
     }
-    
-    // Validaciones
-    if (empty($input['title']) || empty($input['description'])) {
-        http_response_code(400);
-        echo json_encode(['error' => 'Título y descripción son requeridos']);
-        return;
-    }
-    
-    // Generar número de ticket único
-    $ticketNumber = 'TK-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
-    
-    $sql = "INSERT INTO tickets (
-                ticket_number, title, description, status, priority, 
-                category_id, created_by, assigned_to, source,
-                contact_name, contact_email, contact_phone,
-                ghl_form_id, ghl_contact_id, due_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        $ticketNumber,
-        $input['title'],
-        $input['description'],
-        $input['status'] ?? 'open',
-        $input['priority'] ?? 'medium',
-        $input['category_id'] ?? null,
-        $input['created_by'] ?? null,
-        $input['assigned_to'] ?? null,
-        $input['source'] ?? 'internal',
-        $input['contact_name'] ?? null,
-        $input['contact_email'] ?? null,
-        $input['contact_phone'] ?? null,
-        $input['ghl_form_id'] ?? null,
-        $input['ghl_contact_id'] ?? null,
-        $input['due_date'] ?? null
-    ]);
-    
-    $ticketId = $pdo->lastInsertId();
-    
-    // Registrar actividad
-    logActivity($pdo, $ticketId, $input['created_by'] ?? null, 'ticket_created', null, 'Ticket creado');
-    
-    // Notificar al usuario asignado si existe
-    $notificationResult = null;
-    if (!empty($input['assigned_to'])) {
-        $ticketData = [
-            'id' => $ticketId,
-            'ticket_number' => $ticketNumber,
-            'title' => $input['title'],
-            'description' => $input['description'],
-            'priority' => $input['priority'] ?? 'medium',
-            'due_date' => $input['due_date'] ?? null
-        ];
-        $notificationResult = notifyTicketAssignment($pdo, $input['assigned_to'], $ticketData);
-    }
-    
-    echo json_encode([
-        'success' => true,
-        'message' => 'Ticket creado exitosamente',
-        'data' => [
-            'id' => $ticketId,
-            'ticket_number' => $ticketNumber
-        ],
-        'notifications' => $notificationResult
-    ]);
 }
 
 /**
  * Actualizar ticket
  */
 function updateTicket($pdo, $id) {
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    // Obtener ticket actual
-    $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
-    $stmt->execute([$id]);
-    $current = $stmt->fetch();
-    
-    if (!$current) {
-        http_response_code(404);
-        echo json_encode(['error' => 'Ticket no encontrado']);
-        return;
-    }
-    
-    $fields = [];
-    $params = [];
-    $allowedFields = ['title', 'description', 'status', 'priority', 'category_id', 'assigned_to', 'due_date'];
-    
-    foreach ($allowedFields as $field) {
-        if (isset($input[$field])) {
-            $fields[] = "$field = ?";
-            $params[] = $input[$field];
-            
-            // Log de cambios
-            if ($current[$field] != $input[$field]) {
-                logActivity($pdo, $id, $input['user_id'] ?? null, 
-                    "changed_$field", $current[$field], $input[$field]);
-            }
-        }
-    }
-    
-    // Manejar estado resuelto/cerrado
-    if (isset($input['status'])) {
-        if ($input['status'] === 'resolved' && $current['status'] !== 'resolved') {
-            $fields[] = "resolved_at = NOW()";
-        }
-        if ($input['status'] === 'closed' && $current['status'] !== 'closed') {
-            $fields[] = "closed_at = NOW()";
-        }
-    }
-    
-    if (empty($fields)) {
-        echo json_encode(['success' => true, 'message' => 'Nada que actualizar']);
-        return;
-    }
-    
-    $params[] = $id;
-    $sql = "UPDATE tickets SET " . implode(', ', $fields) . " WHERE id = ?";
-    
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    
-    // Notificar si se cambió la asignación
-    $notificationResult = null;
-    if (isset($input['assigned_to']) && $input['assigned_to'] != $current['assigned_to'] && !empty($input['assigned_to'])) {
-        // Obtener datos actualizados del ticket
+    try {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        // DEBUG
+        file_put_contents('/tmp/debug.log', "UPDATE INPUT: " . json_encode($input) . "\n", FILE_APPEND);
+        
+        // Obtener ticket actual
         $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
         $stmt->execute([$id]);
-        $updatedTicket = $stmt->fetch();
+        $current = $stmt->fetch();
         
-        $ticketData = [
-            'id' => $id,
-            'ticket_number' => $updatedTicket['ticket_number'],
-            'title' => $updatedTicket['title'],
-            'description' => $updatedTicket['description'],
-            'priority' => $updatedTicket['priority'],
-            'due_date' => $updatedTicket['due_date']
-        ];
-        $notificationResult = notifyTicketAssignment($pdo, $input['assigned_to'], $ticketData);
+        if (!$current) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Ticket no encontrado']);
+            return;
+        }
+        
+        $fields = [];
+        $params = [];
+        $allowedFields = ['title', 'description', 'status', 'priority', 'category_id', 'assigned_to', 'due_date', 
+                          'work_type', 'hours_dedicated', 'max_delivery_date', 'project_id', 'briefing_url', 
+                          'video_url', 'monthly_hours', 'score', 'info_pending_status', 'revision_status', 'end_date', 'client_id', 'backlog', 'backlog_type', 'pending_info_details'];
+        
+        foreach ($allowedFields as $field) {
+            if (isset($input[$field])) {
+                $fields[] = "$field = ?";
+                
+                // Convertir backlog a integer
+                if ($field === 'backlog') {
+                    $params[] = (int)$input[$field];
+                } else {
+                    $params[] = $input[$field];
+                }
+                
+                // Log de cambios (si funciÃ³n existe)
+                if (function_exists('logActivity') && $current[$field] != $input[$field]) {
+                    try {
+                        logActivity($pdo, $id, $input['user_id'] ?? null, 
+                            "changed_$field", $current[$field], $input[$field]);
+                    } catch (Exception $e) {
+                        error_log('Activity log error: ' . $e->getMessage());
+                    }
+                }
+            }
+        }
+        
+        // Manejar estado resuelto/cerrado
+        if (isset($input['status'])) {
+            if ($input['status'] === 'resolved' && $current['status'] !== 'resolved') {
+                $fields[] = "resolved_at = NOW()";
+            }
+            if ($input['status'] === 'closed' && $current['status'] !== 'closed') {
+                $fields[] = "closed_at = NOW()";
+            }
+        }
+        
+        if (empty($fields)) {
+            echo json_encode(['success' => true, 'message' => 'Nada que actualizar']);
+            return;
+        }
+        
+        $params[] = $id;
+        $sql = "UPDATE tickets SET " . implode(', ', $fields) . " WHERE id = ?";
+        
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        
+        // Notificar si se cambiÃ³ asignaciÃ³n desde backlog
+        $notificationResult = null;
+        if (isset($input['assigned_to']) && isset($input['backlog']) && (int)$input['backlog'] === 0) {
+            // Se estÃ¡ asignando desde backlog a nuevo usuario
+            try {
+                $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
+                $stmt->execute([$id]);
+                $updatedTicket = $stmt->fetch();
+                
+                if (function_exists('notifyTicketAssignment') && $updatedTicket) {
+                    $ticketData = [
+                        'id' => $id,
+                        'ticket_number' => $updatedTicket['ticket_number'],
+                        'title' => $updatedTicket['title'],
+                        'description' => $updatedTicket['description'],
+                        'priority' => $updatedTicket['priority'],
+                        'due_date' => $updatedTicket['due_date']
+                    ];
+                    // Notificar al nuevo asignatario
+                    notifyTicketAssignment($pdo, $input['assigned_to'], $ticketData);
+                }
+            } catch (Exception $e) {
+                error_log('Notification error: ' . $e->getMessage());
+            }
+        }
+        
+        // Notificar al cliente por WhatsApp si hay cambios importantes
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
+            $stmt->execute([$id]);
+            $updatedTicket = $stmt->fetch();
+
+            // Notificar si pasa a status 'waiting' (información pendiente)
+            if (isset($input['status']) && $input['status'] === 'waiting' &&
+                $current['status'] !== 'waiting') {
+
+                // Agregar información pendiente a los datos del ticket
+                $ticketDataWithInfo = $updatedTicket;
+                $ticketDataWithInfo['informacion_pendiente'] = $input['pending_info_details'] ?? '';
+                $ticketDataWithInfo['link_seguimiento'] = generateTrackingLink($updatedTicket['id'], $updatedTicket['ticket_number'], $pdo);
+
+                if (function_exists('notifyPendingInfo')) {
+                    notifyPendingInfo($pdo, $ticketDataWithInfo);
+                }
+            }
+
+            // Notificar si pasa a status 'in_progress' (en proceso)
+            if (isset($input['status']) && $input['status'] === 'in_progress' &&
+                $current['status'] !== 'in_progress') {
+
+                // Agregar link de seguimiento a los datos del ticket
+                $ticketDataWithLink = $updatedTicket;
+                $ticketDataWithLink['link_seguimiento'] = generateTrackingLink($updatedTicket['id'], $updatedTicket['ticket_number'], $pdo);
+
+                if (function_exists('notifyInProgress')) {
+                    notifyInProgress($pdo, $ticketDataWithLink);
+                }
+            }
+        } catch (Exception $e) {
+            error_log('WhatsApp notification error: ' . $e->getMessage());
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Ticket actualizado',
+            'notifications' => $notificationResult
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Error al actualizar ticket: ' . $e->getMessage()
+        ]);
     }
-    
-    echo json_encode([
-        'success' => true, 
-        'message' => 'Ticket actualizado',
-        'notifications' => $notificationResult
-    ]);
 }
 
 /**
@@ -355,7 +585,7 @@ function deleteTicket($pdo, $id) {
 }
 
 /**
- * Obtener estadísticas
+ * Obtener estadÃ­sticas
  */
 function getStats($pdo) {
     $stats = [];
@@ -381,14 +611,14 @@ function getStats($pdo) {
     $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stats['last_30_days'] = (int)$stmt->fetchColumn();
     
-    // Por categoría
+    // Por categorÃ­a
     $stmt = $pdo->query("SELECT c.name, COUNT(t.id) as count 
                          FROM categories c 
                          LEFT JOIN tickets t ON c.id = t.category_id 
                          GROUP BY c.id ORDER BY count DESC");
     $stats['by_category'] = $stmt->fetchAll();
     
-    // Tiempo promedio de resolución (últimos 30 días)
+    // Tiempo promedio de resoluciÃ³n (Ãºltimos 30 dÃ­as)
     $stmt = $pdo->query("SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours
                          FROM tickets 
                          WHERE resolved_at IS NOT NULL 
@@ -469,7 +699,7 @@ function handleGHLWebhook($pdo) {
         'category_id' => $input['category_id'] ?? null
     ];
     
-    // Si hay campos personalizados, añadirlos a la descripción
+    // Si hay campos personalizados, aÃ±adirlos a la descripciÃ³n
     if (isset($input['customFields']) && is_array($input['customFields'])) {
         $ticketData['description'] .= "\n\n--- Campos adicionales ---\n";
         foreach ($input['customFields'] as $key => $value) {
@@ -507,3 +737,140 @@ function mapPriority($priority) {
     ];
     return $map[strtolower($priority)] ?? 'medium';
 }
+/**
+ * Obtener ticket con validaciÃ³n de token de seguimiento
+ */
+function getTicketTracking($pdo, $ticketNumber, $token) {
+    if (empty($ticketNumber) || empty($token)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'ParÃ¡metros incompletos']);
+        return;
+    }
+    
+    try {
+        // Obtener ticket por nÃºmero
+        $stmt = $pdo->prepare("
+            SELECT t.*, 
+                   u2.name as assigned_to_name,
+                   c.name as category_name
+            FROM tickets t
+            LEFT JOIN users u2 ON t.assigned_to = u2.id
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.ticket_number = ?
+        ");
+        $stmt->execute([$ticketNumber]);
+        $ticket = $stmt->fetch();
+        
+        if (!$ticket) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Ticket no encontrado']);
+            return;
+        }
+        
+        // Validar token
+        $stmt = $pdo->prepare("
+            SELECT * FROM ticket_tracking_tokens 
+            WHERE ticket_id = ? AND token LIKE ? AND expires_at > NOW()
+        ");
+        $tokenPrefix = substr($token, 0, 20) . '%';
+        $stmt->execute([$ticket['id'], $tokenPrefix]);
+        $tokenRecord = $stmt->fetch();
+        
+        if (!$tokenRecord) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Enlace de seguimiento invÃ¡lido o expirado']);
+            return;
+        }
+        
+        // Obtener actividades del ticket
+        $stmt = $pdo->prepare("
+            SELECT id, ticket_id, user_id, action, old_value, new_value, description, created_at
+            FROM activities
+            WHERE ticket_id = ?
+            ORDER BY created_at DESC
+            LIMIT 10
+        ");
+        $stmt->execute([$ticket['id']]);
+        $activities = $stmt->fetchAll();
+        
+        echo json_encode([
+            'success' => true,
+            'ticket' => $ticket,
+            'activities' => $activities
+        ]);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Error al obtener ticket: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * Test WhatsApp Flow paso a paso
+ */
+function testWhatsAppFlow($pdo) {
+    echo "=== TEST WHATSAPP FLOW ===\n\n";
+    
+    $phone = $_GET['phone'] ?? '+57301448821';
+    $ticketId = 19;
+    
+    require_once __DIR__ . '/ghl-notifications.php';
+    require_once __DIR__ . '/ghl.php';
+    
+    echo "Paso 1: Buscar contacto con telÃ©fono $phone\n";
+    
+    $searchResult = ghlApiCall('/contacts/lookup?phone=' . urlencode($phone), 'GET', null, GHL_LOCATION_ID);
+    
+    echo "Resultado bÃºsqueda:\n";
+    echo json_encode($searchResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+    
+    if (!empty($searchResult['contacts'][0]['id'])) {
+        $contactId = $searchResult['contacts'][0]['id'];
+        echo "âœ… Contacto encontrado: $contactId\n\n";
+    } else {
+        echo "âŒ Contacto NO encontrado. Intentando crear...\n";
+        
+        echo "Paso 2: Crear contacto\n";
+        
+        $createResult = ghlApiCall('/contacts/', 'POST', [
+            'phone' => $phone,
+            'name' => 'Cliente Test',
+            'locationId' => GHL_LOCATION_ID
+        ], GHL_LOCATION_ID);
+        
+        echo "Resultado creaciÃ³n:\n";
+        echo json_encode($createResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        
+        if (!empty($createResult['contact']['id'])) {
+            $contactId = $createResult['contact']['id'];
+            echo "âœ… Contacto creado: $contactId\n\n";
+        } else {
+            echo "âŒ Error creando contacto\n";
+            echo json_encode($createResult) . "\n";
+            return;
+        }
+    }
+    
+    echo "Paso 3: Actualizar custom fields\n";
+    
+    $customFieldsResult = updateContactCustomFields($contactId, [
+        'ticket_id' => 'P-20260126-651F',
+        'link_seguimiento' => 'http://localhost/Ticketing System/ticket-tracking.php?id=P-20260126-651F&token=abc123'
+    ]);
+    
+    echo "Resultado custom fields:\n";
+    echo json_encode($customFieldsResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+    
+    echo "Paso 4: Enviar WhatsApp con template\n";
+    
+    $templateResult = sendWhatsAppTemplate($pdo, $phone, 'ticket_creado', [
+        'ticket_id' => 'P-20260126-651F',
+        'link_seguimiento' => 'http://localhost/Ticketing System/ticket-tracking.php?id=P-20260126-651F&token=abc123'
+    ]);
+    
+    echo "Resultado template:\n";
+    echo json_encode($templateResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+    
+    echo "=== FIN TEST ===\n";
+}
+?>
+
