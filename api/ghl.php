@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /**
  * API de Integración con GoHighLevel
  * Librería de funciones para sincronización y API calls

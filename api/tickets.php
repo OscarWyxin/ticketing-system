@@ -1,7 +1,7 @@
-﻿<?php
+<?php
 /**
  * API de Tickets - Sistema de Ticketing GHL
- * Endpoints RESTful para gestiÃ³n de tickets
+ * Endpoints RESTful para gestión de tickets
  */
 
 // Define absolute paths for logging
