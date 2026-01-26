@@ -19,6 +19,8 @@ let state = {
     agents: [],
     tags: [],
     locations: [],
+    clients: [],
+    projects: [],
     stats: {},
     currentTicket: null,
     pagination: { page: 1, limit: 20, total: 0 },
@@ -26,9 +28,15 @@ let state = {
         status: '',
         priority: '',
         category: '',
-        search: ''
+        search: '',
+        assigned: ''
     },
-    currentView: 'dashboard'
+    currentView: 'dashboard',
+    timer: {
+        running: false,
+        seconds: 0,
+        interval: null
+    }
 };
 
 // =====================================================
@@ -101,6 +109,11 @@ function setupEventListeners() {
         loadTickets();
     });
 
+    document.getElementById('filter-assigned')?.addEventListener('change', (e) => {
+        state.filters.assigned = e.target.value;
+        loadTickets();
+    });
+
     // Toggle sidebar móvil
     document.getElementById('toggle-sidebar')?.addEventListener('click', () => {
         document.querySelector('.sidebar').classList.toggle('open');
@@ -148,15 +161,19 @@ async function apiCall(url, options = {}) {
 
 async function loadInitialData() {
     try {
-        const [categoriesRes, agentsRes, tagsRes] = await Promise.all([
+        const [categoriesRes, agentsRes, tagsRes, clientsRes, projectsRes] = await Promise.all([
             apiCall(`${HELPERS_API}?action=categories`),
             apiCall(`${HELPERS_API}?action=agents`),
-            apiCall(`${HELPERS_API}?action=tags`)
+            apiCall(`${HELPERS_API}?action=tags`),
+            apiCall(`${HELPERS_API}?action=clients`),
+            apiCall(`${HELPERS_API}?action=projects`)
         ]);
 
         state.categories = categoriesRes.data || [];
         state.agents = agentsRes.data || [];
         state.tags = tagsRes.data || [];
+        state.clients = clientsRes.data || [];
+        state.projects = projectsRes.data || [];
 
         // Also load GHL locations if synced
         try {
@@ -281,10 +298,25 @@ async function loadTicketDetail(id) {
         if (response.success) {
             state.currentTicket = response.data;
             renderTicketDetail();
+            showTimerForPuntual();
+            resetTimer();
             showView('ticket-detail');
         }
     } catch (error) {
         console.error('Error loading ticket:', error);
+    }
+}
+
+async function loadBacklogTickets(type = 'consultoria') {
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=backlog&type=${type}`);
+        
+        if (response.success) {
+            renderBacklogTickets(response.data, type);
+            updateBacklogBadge(response.total, type);
+        }
+    } catch (error) {
+        console.error('Error loading backlog tickets:', error);
     }
 }
 
@@ -529,50 +561,142 @@ function renderRecentTickets() {
 
 function renderTickets() {
     const tbody = document.getElementById('tickets-tbody');
-    if (!tbody) return;
+    const grid = document.getElementById('tickets-grid');
+    
+    if (!tbody && !grid) return;
 
     if (state.tickets.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="empty-state">
-                    <i class="fas fa-search"></i>
-                    <h3>No se encontraron tickets</h3>
+        if (tbody) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <h3>No se encontraron tickets</h3>
+                        <p>Intenta cambiar los filtros o crea un nuevo ticket</p>
+                    </td>
+                </tr>
+            `;
+        }
+        if (grid) {
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; color: var(--gray-500);">
+                    <i class="fas fa-search" style="font-size: 48px; margin-bottom: 16px; opacity: 0.5;"></i>
+                    <h3 style="color: var(--gray-800); margin-bottom: 8px;">No se encontraron tickets</h3>
                     <p>Intenta cambiar los filtros o crea un nuevo ticket</p>
-                </td>
-            </tr>
-        `;
+                </div>
+            `;
+        }
         return;
     }
 
-    tbody.innerHTML = state.tickets.map(ticket => `
-        <tr onclick="loadTicketDetail(${ticket.id})">
+    // Render List View
+    if (tbody) {
+        tbody.innerHTML = state.tickets.map(ticket => `
+            <tr onclick="loadTicketDetail(${ticket.id})">
+                <td><span class="ticket-number">${ticket.ticket_number}</span></td>
+                <td>
+                    <strong>${escapeHtml(ticket.title)}</strong>
+                    ${ticket.contact_name ? `<br><small style="color: var(--gray-500)">${escapeHtml(ticket.contact_name)}</small>` : ''}
+                </td>
+                <td><span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span></td>
+                <td><span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span></td>
+                <td>
+                    ${ticket.category_name ? 
+                        `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : 
+                        '<span style="color: var(--gray-400)">—</span>'}
+                </td>
+                <td>
+                    ${ticket.assigned_to_name ? 
+                        `<span>${ticket.assigned_to_name}</span>` : 
+                        '<span style="color: var(--gray-400)">Sin asignar</span>'}
+                </td>
+                <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
+                <td>
+                    <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // Render Grid View
+    if (grid) {
+        grid.innerHTML = state.tickets.map(ticket => `
+            <div class="ticket-card" onclick="loadTicketDetail(${ticket.id})">
+                <div class="ticket-card-header">
+                    <span class="ticket-number">${ticket.ticket_number}</span>
+                    <span class="status-badge status-${ticket.status}" style="font-size: 11px;">${getStatusLabel(ticket.status)}</span>
+                </div>
+                <div class="ticket-card-body">
+                    <h4>${escapeHtml(ticket.title)}</h4>
+                    ${ticket.contact_name ? `<div class="ticket-contact">${escapeHtml(ticket.contact_name)}</div>` : ''}
+                    ${ticket.description ? `<div class="ticket-description">${escapeHtml(ticket.description)}</div>` : ''}
+                </div>
+                <div class="ticket-card-footer">
+                    <div class="ticket-meta">
+                        ${ticket.priority ? `<span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span>` : ''}
+                        ${ticket.category_name ? `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : ''}
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span class="ticket-assignee">${ticket.assigned_to_name ? ticket.assigned_to_name : 'Sin asignar'}</span>
+                        <span class="ticket-date">${formatDate(ticket.created_at)}</span>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderPagination();
+}
+
+function renderBacklogTickets(tickets, type = 'consultoria') {
+    const bodyId = type === 'aib' ? 'backlog-aib-tbody' : 'backlog-consultoria-tbody';
+    const emptyId = type === 'aib' ? 'backlog-aib-empty' : 'backlog-consultoria-empty';
+    
+    const tbody = document.getElementById(bodyId);
+    const emptyState = document.getElementById(emptyId);
+    
+    if (!tbody) return;
+
+    if (!tickets || tickets.length === 0) {
+        tbody.classList.add('hidden');
+        emptyState?.classList.remove('hidden');
+        return;
+    }
+
+    tbody.classList.remove('hidden');
+    emptyState?.classList.add('hidden');
+
+    tbody.innerHTML = tickets.map(ticket => `
+        <tr>
             <td><span class="ticket-number">${ticket.ticket_number}</span></td>
+            <td>
+                <span class="project-badge">${ticket.project_name || 'Sin proyecto'}</span>
+            </td>
             <td>
                 <strong>${escapeHtml(ticket.title)}</strong>
                 ${ticket.contact_name ? `<br><small style="color: var(--gray-500)">${escapeHtml(ticket.contact_name)}</small>` : ''}
             </td>
-            <td><span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span></td>
             <td><span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span></td>
             <td>
                 ${ticket.category_name ? 
                     `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : 
                     '<span style="color: var(--gray-400)">—</span>'}
             </td>
-            <td>
-                ${ticket.assigned_to_name ? 
-                    `<span>${ticket.assigned_to_name}</span>` : 
-                    '<span style="color: var(--gray-400)">Sin asignar</span>'}
-            </td>
             <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
             <td>
-                <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
-                    <i class="fas fa-eye"></i>
-                </button>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); assignTicketFromBacklog(${ticket.id}, '${type}')">
+                        <i class="fas fa-user-check"></i> Tomar
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                </div>
             </td>
         </tr>
     `).join('');
-
-    renderPagination();
 }
 
 function renderTicketDetail() {
@@ -662,17 +786,48 @@ function renderTicketDetail() {
                     <span class="label">Origen</span>
                     <span class="value">${getSourceLabel(ticket.source)}</span>
                 </div>
+                
+                ${ticket.status === 'waiting' ? `
+                <div class="info-card" style="background-color: var(--warning-bg); border-left: 4px solid var(--warning);">
+                    <h4 style="color: var(--warning); margin-bottom: 10px;">
+                        <i class="fas fa-exclamation-triangle"></i> Información Pendiente
+                    </h4>
+                    <textarea id="pending-info-text" class="form-control" rows="3" placeholder="¿Qué información falta?" style="margin-bottom: 10px;">${escapeHtml(ticket.pending_info_details || '')}</textarea>
+                    <button class="btn btn-success btn-sm" onclick="markInfoComplete(${ticket.id})">
+                        <i class="fas fa-check-circle"></i> Información Completa
+                    </button>
+                </div>
+                ` : `
+                <div class="info-card">
+                    <h4>Información Pendiente</h4>
+                    <textarea id="pending-info-text" class="form-control" rows="3" placeholder="¿Qué información falta?" style="margin-bottom: 10px;">${escapeHtml(ticket.pending_info_details || '')}</textarea>
+                    <button class="btn btn-warning btn-sm" onclick="markInfoPending(${ticket.id})">
+                        <i class="fas fa-clock"></i> Marcar como Pendiente
+                    </button>
+                </div>
+                `}
+                
+                ${ticket.work_type === 'puntual' ? `
+                <div class="info-row">
+                    <span class="label">Horas Dedicadas</span>
+                    <span class="value" style="font-weight: 700; color: var(--primary);">${formatSecondsToTime(parseFloat(ticket.hours_dedicated || 0) * 3600)}</span>
+                </div>
+                ` : ''}
             </div>
             
             ${ticket.activity && ticket.activity.length > 0 ? `
             <div class="info-card">
                 <h4>Actividad Reciente</h4>
                 <div class="activity-list">
-                    ${ticket.activity.slice(0, 5).map(a => `
+                    ${ticket.activity.slice(0, 10).map(a => `
                         <div class="activity-item">
-                            <div class="activity-icon"><i class="fas fa-history"></i></div>
-                            <div>
-                                <div class="activity-text">${getActivityLabel(a.action)}</div>
+                            <div class="activity-icon">
+                                <i class="${getActivityIcon(a.action)}"></i>
+                            </div>
+                            <div class="activity-content">
+                                <div class="activity-text">
+                                    <strong>${a.user_name || 'Sistema'}</strong> ${getDetailedActivityLabel(a)}
+                                </div>
                                 <div class="activity-time">${timeAgo(a.created_at)}</div>
                             </div>
                         </div>
@@ -766,13 +921,42 @@ function showView(view) {
     } else if (view === 'tickets') {
         state.filters = { status: '', priority: '', category: '', search: '' };
         loadTickets();
+    } else if (view === 'backlog-consultoria') {
+        loadBacklogTickets('consultoria');
+    } else if (view === 'backlog-aib') {
+        loadBacklogTickets('aib');
+    } else if (view.startsWith('agent-')) {
+        // Cargar dashboard del agente
+        const agentMap = {
+            'agent-oscar': 10,
+            'agent-fiorella': 7,
+            'agent-jefferson': 8,
+            'agent-victoria': 13
+        };
+        const agentId = agentMap[view];
+        if (agentId) {
+            loadAgentDashboard(agentId);
+        }
     } else if (view === 'open') {
         state.filters = { ...state.filters, status: 'open' };
         document.getElementById('filter-status').value = 'open';
         loadTickets();
         showView('tickets');
     }
+}
 
+function toggleView(viewType) {
+    // Actualizar botones activos
+    document.getElementById('btn-view-list').classList.toggle('active', viewType === 'list');
+    document.getElementById('btn-view-grid').classList.toggle('active', viewType === 'grid');
+    
+    // Mostrar/ocultar vistas
+    document.getElementById('tickets-list-view').classList.toggle('hidden', viewType !== 'list');
+    document.getElementById('tickets-grid-view').classList.toggle('hidden', viewType !== 'grid');
+    
+
+    // Guardar preferencia
+    state.currentView = viewType;
     // Cerrar sidebar en móvil
     document.querySelector('.sidebar')?.classList.remove('open');
 }
@@ -786,8 +970,6 @@ function closeModal(modalId) {
     // Reset form if it's the new ticket modal
     if (modalId === 'modal-new-ticket') {
         document.getElementById('form-new-ticket')?.reset();
-        document.getElementById('new-ticket-client-section').style.display = 'none';
-        document.getElementById('new-ticket-internal-section').style.display = 'block';
     }
 }
 
@@ -815,22 +997,116 @@ function populateNewTicketSelects() {
     }
 }
 
-// Toggle client section in new ticket form
-document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('input[name="ticket_type"]').forEach(radio => {
-        radio.addEventListener('change', (e) => {
-            const clientSection = document.getElementById('new-ticket-client-section');
-            const internalSection = document.getElementById('new-ticket-internal-section');
-            if (e.target.value === 'client') {
-                clientSection.style.display = 'block';
-                internalSection.style.display = 'none';
-            } else {
-                clientSection.style.display = 'none';
-                internalSection.style.display = 'block';
-            }
-        });
-    });
-});
+
+// =====================================================
+// Funciones de Formularios
+// =====================================================
+
+/**
+ * Cambiar entre tipos de trabajo en formulario
+ */
+function switchWorkType(type) {
+    // Ocultar todas las secciones
+    document.getElementById('fields-puntual').classList.add('hidden');
+    document.getElementById('fields-recurrente').classList.add('hidden');
+    document.getElementById('fields-soporte').classList.add('hidden');
+    
+    // Mostrar la seleccionada
+    document.getElementById(`fields-${type}`).classList.remove('hidden');
+}
+
+// =====================================================
+// Timer para Horas Dedicadas (Puntual tickets)
+// =====================================================
+
+function showTimerForPuntual() {
+    const timerDisplay = document.getElementById('timer-display');
+    console.log('showTimerForPuntual called');
+    console.log('Current ticket:', state.currentTicket);
+    console.log('Timer display element:', timerDisplay);
+    
+    if (state.currentTicket && state.currentTicket.work_type === 'puntual') {
+        if (timerDisplay) {
+            timerDisplay.style.display = 'block';
+            console.log('Timer shown for Puntual ticket');
+        }
+        updateTimerDisplay();
+    } else {
+        if (timerDisplay) {
+            timerDisplay.style.display = 'none';
+            console.log('Timer hidden - not a Puntual ticket');
+        }
+    }
+}
+
+function toggleTimer() {
+    const btn = document.getElementById('btn-timer');
+    
+    if (state.timer.running) {
+        // Pausar timer
+        state.timer.running = false;
+        clearInterval(state.timer.interval);
+        btn.innerHTML = '<i class="fas fa-play"></i> Reanudar';
+    } else {
+        // Iniciar/reanudar timer
+        state.timer.running = true;
+        btn.innerHTML = '<i class="fas fa-pause"></i> Pausar';
+        
+        state.timer.interval = setInterval(() => {
+            state.timer.seconds++;
+            updateTimerDisplay();
+        }, 1000);
+    }
+}
+
+function resetTimer() {
+    state.timer.running = false;
+    state.timer.seconds = 0;
+    clearInterval(state.timer.interval);
+    
+    const btn = document.getElementById('btn-timer');
+    btn.innerHTML = '<i class="fas fa-play"></i> Iniciar';
+    updateTimerDisplay();
+}
+
+function updateTimerDisplay() {
+    const hours = Math.floor(state.timer.seconds / 3600);
+    const minutes = Math.floor((state.timer.seconds % 3600) / 60);
+    const seconds = state.timer.seconds % 60;
+    
+    const display = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    document.getElementById('timer-time').textContent = display;
+}
+
+function formatSecondsToTime(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    
+    return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+function saveTimer() {
+    if (!state.currentTicket) return;
+    
+    // Convertir segundos a horas decimales
+    const hoursDecimal = state.timer.seconds / 3600;
+    
+    // Formato: Xh Ym Zs
+    const hours = Math.floor(state.timer.seconds / 3600);
+    const minutes = Math.floor((state.timer.seconds % 3600) / 60);
+    const seconds = state.timer.seconds % 60;
+    const timeFormat = `${hours}h ${minutes}m ${seconds}s`;
+    
+    updateTicketField(state.currentTicket.id, 'hours_dedicated', hoursDecimal);
+    showToast(`⏱️ ${timeFormat} guardadas`, 'success');
+    
+    // Actualizar ticket en estado local
+    state.currentTicket.hours_dedicated = hoursDecimal;
+    renderTicketDetail();
+    
+    resetTimer();
+}
 
 async function submitNewTicket(e) {
     e.preventDefault();
@@ -839,9 +1115,57 @@ async function submitNewTicket(e) {
     const formData = new FormData(form);
     const data = Object.fromEntries(formData.entries());
     
+    // Obtener el tipo de trabajo seleccionado
+    const workType = document.querySelector('input[name="work_type"]:checked').value;
+    data.work_type = workType;
+    
+    // Validar campos requeridos según el tipo
+    if (!data.title || !data.description) {
+        showToast('Título y descripción son requeridos', 'error');
+        return;
+    }
+    
     // Añadir datos por defecto
-    data.source = data.ticket_type === 'client' ? 'external' : 'internal';
     data.created_by = 1; // TODO: Usuario actual
+    
+    // Limpiar todos los campos vacíos
+    Object.keys(data).forEach(key => {
+        if (!data[key] || data[key] === '') {
+            delete data[key];
+        }
+    });
+    
+    // Procesar campos según el tipo de trabajo
+    if (workType === 'puntual') {
+        // Puntual no requiere horas en la creación
+        delete data.monthly_hours;
+        delete data.score;
+        delete data.hours_dedicated;
+    } else if (workType === 'recurrente') {
+        if (!data.monthly_hours) {
+            showToast('Las horas mensuales son requeridas para trabajos recurrentes', 'error');
+            return;
+        }
+        // Limpiar campos de otros tipos
+        delete data.hours_dedicated;
+        delete data.project_id;
+        delete data.max_delivery_date;
+        delete data.briefing_url;
+        delete data.video_url;
+        delete data.info_pending_status;
+        delete data.revision_status;
+        delete data.score;
+    } else if (workType === 'soporte') {
+        // Soporte no requiere campos específicos obligatorios
+        delete data.hours_dedicated;
+        delete data.project_id;
+        delete data.max_delivery_date;
+        delete data.briefing_url;
+        delete data.video_url;
+        delete data.info_pending_status;
+        delete data.revision_status;
+        delete data.monthly_hours;
+    }
 
     try {
         const response = await apiCall(`${TICKETS_API}?action=create`, {
@@ -853,16 +1177,19 @@ async function submitNewTicket(e) {
             showToast(`🎉 Ticket ${response.data.ticket_number} creado`, 'success');
             closeModal('modal-new-ticket');
             form.reset();
+            switchWorkType('puntual'); // Reset a tipo por defecto
             loadTickets();
             loadStats();
         } else {
             showToast(response.error || 'Error al crear ticket', 'error');
+            console.error('API Error:', response);
         }
     } catch (error) {
-        showToast('Error de conexión', 'error');
+        showToast('Error de conexión: ' + error.message, 'error');
+        console.error('Connection error:', error);
+        console.log('Data sent:', data);
     }
 }
-
 async function updateTicketField(ticketId, field, value) {
     try {
         const response = await apiCall(`${TICKETS_API}?action=update&id=${ticketId}`, {
@@ -875,6 +1202,91 @@ async function updateTicketField(ticketId, field, value) {
             // Actualizar estado local
             if (state.currentTicket) {
                 state.currentTicket[field] = value;
+            }
+        } else {
+            showToast(response.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function toggleInfoPending(ticketId) {
+    try {
+        const ticket = state.currentTicket;
+        const newStatus = ticket.info_pending_status ? 0 : 1;
+        
+        const response = await apiCall(`${TICKETS_API}?action=update&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({ info_pending_status: newStatus, user_id: 1 })
+        });
+
+        if (response.success) {
+            showToast(`Estado de información ${newStatus ? 'marcado como pendiente' : 'completado'}`, 'success');
+            // Actualizar estado local
+            if (state.currentTicket) {
+                state.currentTicket.info_pending_status = newStatus;
+                renderTicketDetail(); // Re-renderizar para actualizar el botón
+            }
+        } else {
+            showToast(response.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function markInfoPending(ticketId) {
+    const textarea = document.getElementById('pending-info-text');
+    const pendingInfo = textarea.value.trim();
+
+    if (!pendingInfo) {
+        showToast('Describe qué información falta', 'warning');
+        return;
+    }
+
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=update&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({
+                status: 'waiting',
+                pending_info_details: pendingInfo,
+                user_id: 1
+            })
+        });
+
+        if (response.success) {
+            showToast('Estado cambiado a Información Pendiente', 'success');
+            if (state.currentTicket) {
+                state.currentTicket.status = 'waiting';
+                state.currentTicket.pending_info_details = pendingInfo;
+                renderTicketDetail();
+            }
+        } else {
+            showToast(response.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function markInfoComplete(ticketId) {
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=update&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({
+                status: 'in_progress',
+                pending_info_details: null,
+                user_id: 1
+            })
+        });
+
+        if (response.success) {
+            showToast('Estado cambiado a En Curso - Información completa', 'success');
+            if (state.currentTicket) {
+                state.currentTicket.status = 'in_progress';
+                state.currentTicket.pending_info_details = null;
+                renderTicketDetail();
             }
         } else {
             showToast(response.error || 'Error al actualizar', 'error');
@@ -949,12 +1361,42 @@ function populateSelects() {
         select.innerHTML = '<option value="">Sin asignar</option>' + 
             state.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     });
+
+    // Filtro de asignados
+    const filterAssigned = document.getElementById('filter-assigned');
+    if (filterAssigned) {
+        filterAssigned.innerHTML = '<option value="">Todos los usuarios</option>' + 
+            state.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+    }
+
+    // Clientes/Cuentas
+    const clientSelect = document.getElementById('new-ticket-client');
+    if (clientSelect) {
+        clientSelect.innerHTML = '<option value="">Seleccionar...</option>' +
+            state.clients.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
+
+    // Proyectos
+    const projectSelect = document.getElementById('new-ticket-project');
+    if (projectSelect) {
+        projectSelect.innerHTML = '<option value="">Seleccionar...</option>' +
+            state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
 }
 
 function updateBadges() {
     const stats = state.stats;
-    document.getElementById('badge-total').textContent = stats.total || 0;
-    document.getElementById('badge-open').textContent = stats.open || 0;
+    const badgeTotal = document.getElementById('badge-total');
+    const badgeOpen = document.getElementById('badge-open');
+    
+    if (badgeTotal) badgeTotal.textContent = stats.total || 0;
+    if (badgeOpen) badgeOpen.textContent = stats.open || 0;
+}
+
+function updateBacklogBadge(count, type = 'consultoria') {
+    const badgeId = type === 'aib' ? 'badge-backlog-aib' : 'badge-backlog-consultoria';
+    const badge = document.getElementById(badgeId);
+    if (badge) badge.textContent = count || 0;
 }
 
 function getStatusLabel(status) {
@@ -994,9 +1436,59 @@ function getActivityLabel(action) {
         changed_status: 'Estado cambiado',
         changed_priority: 'Prioridad cambiada',
         changed_assigned_to: 'Asignación cambiada',
-        comment_added: 'Comentario añadido'
+        assigned: 'Ticket asignado',
+        changed_backlog: 'Backlog cambiado',
+        comment_added: 'Comentario añadido',
+        status_changed: 'Estado cambiado'
     };
-    return labels[action] || action;
+    return labels[action] || action.replace(/_/g, ' ');
+}
+
+function getActivityIcon(action) {
+    const icons = {
+        ticket_created: 'fas fa-plus-circle',
+        changed_status: 'fas fa-exchange-alt',
+        changed_priority: 'fas fa-exclamation-circle',
+        changed_assigned_to: 'fas fa-user-check',
+        assigned: 'fas fa-user-check',
+        changed_backlog: 'fas fa-inbox',
+        comment_added: 'fas fa-comment',
+        status_changed: 'fas fa-exchange-alt'
+    };
+    return icons[action] || 'fas fa-history';
+}
+
+function getDetailedActivityLabel(activity) {
+    const { action, old_value, new_value, user_name, assigned_to_name } = activity;
+    
+    const formatValue = (val) => {
+        if (val === '1' || val === 1 || val === true) return 'En backlog';
+        if (val === '0' || val === 0 || val === false || val === null || val === '') return 'Fuera del backlog';
+        return val;
+    };
+    
+    switch(action) {
+        case 'ticket_created':
+            return 'creó este ticket';
+        case 'changed_status':
+        case 'status_changed':
+            return `cambió el estado de <span class="badge">${old_value || 'inicial'}</span> a <span class="badge">${new_value}</span>`;
+        case 'changed_priority':
+            return `cambió la prioridad de <span class="badge">${old_value || 'inicial'}</span> a <span class="badge">${new_value}</span>`;
+        case 'changed_assigned_to':
+        case 'assigned':
+            const nameToShow = assigned_to_name || new_value;
+            if (nameToShow === 'null' || nameToShow === null || nameToShow === '0') {
+                return 'removió la asignación del ticket';
+            }
+            return `asignó el ticket a <strong>${nameToShow}</strong>`;
+        case 'changed_backlog':
+            return `cambió el estado de backlog de <span class="badge">${formatValue(old_value)}</span> a <span class="badge">${formatValue(new_value)}</span>`;
+        case 'comment_added':
+            return 'añadió un comentario';
+        default:
+            return getActivityLabel(action);
+    }
 }
 
 function formatDate(dateStr) {
@@ -1089,3 +1581,299 @@ function sendToGHL(type, data) {
         window.parent.postMessage({ type, ...data }, '*');
     }
 }
+
+async function assignTicketFromBacklog(ticketId, backlogType = 'consultoria') {
+    // Mostrar modal para seleccionar agente o asignar a usuario actual
+    const agents = state.agents || [];
+    
+    if (agents.length === 0) {
+        showToast('No hay agentes disponibles', 'error');
+        return;
+    }
+
+    // Crear modal dinámico
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2>Asignar Ticket</h2>
+                <button class="btn-icon" onclick="this.closest('.modal-overlay').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Asignar a:</label>
+                    <select id="assign-agent" class="form-control">
+                        <option value="">Selecciona un agente...</option>
+                        ${agents.map(agent => `<option value="${agent.id}">${agent.name}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmBacklogAssignment(${ticketId}, '${backlogType}')">Asignar</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    document.getElementById('assign-agent').focus();
+}
+
+async function confirmBacklogAssignment(ticketId, backlogType = 'consultoria') {
+    const agentId = document.getElementById('assign-agent').value;
+    
+    if (!agentId) {
+        showToast('Selecciona un agente', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${TICKETS_API}?action=update&id=${ticketId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                assigned_to: parseInt(agentId),
+                backlog: false  // Sacar del backlog al asignar
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            showToast('✅ Ticket asignado correctamente', 'success');
+            document.querySelector('.modal-overlay.active')?.remove();
+            loadBacklogTickets(backlogType);  // Recargar backlog con el tipo correcto
+            loadTickets();                     // Recargar tabla de tickets
+            loadStats();                       // Recargar estadísticas
+            // Si está abierto el detalle, recargarlo también
+            if (state.currentTicket && state.currentTicket.id === ticketId) {
+                loadTicketDetail(ticketId);
+            }
+        } else {
+            showToast(result.error || 'Error al asignar ticket', 'error');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showToast('Error al asignar ticket', 'error');
+    }
+}
+
+// =====================================================
+// Agent Dashboard Functions
+// =====================================================
+
+const AGENT_DATA = {
+    10: { name: 'Oscar Calamita', id: 10 },
+    7: { name: 'Fiorella Aguerre', id: 7 },
+    8: { name: 'Jefferson Carvajal', id: 8 },
+    13: { name: 'Victoria Aparicio', id: 13 }
+};
+
+async function loadAgentDashboard(agentId) {
+    const agent = AGENT_DATA[agentId];
+    if (!agent) return;
+
+    // Mapear agentId a nombre corto para el ID del elemento
+    const agentNameMap = {
+        10: 'oscar',
+        7: 'fiorella',
+        8: 'jefferson',
+        13: 'victoria'
+    };
+    const agentShort = agentNameMap[agentId];
+    const dashboard = document.getElementById(`agent-${agentShort}-dashboard`);
+    if (!dashboard) return;
+
+    dashboard.innerHTML = '<div class="loading">Cargando datos...</div>';
+
+    try {
+        // Cargar estadísticas
+        const statsResponse = await fetch(`${HELPERS_API}?action=agent-stats&agent_id=${agentId}`);
+        const statsData = await statsResponse.json();
+
+        // Cargar tickets
+        const ticketsResponse = await fetch(`${HELPERS_API}?action=agent-tickets&agent_id=${agentId}`);
+        const ticketsData = await ticketsResponse.json();
+
+        if (statsData.success && ticketsData.success) {
+            dashboard.innerHTML = renderAgentDashboard(agent, statsData.data, ticketsData.data);
+        } else {
+            dashboard.innerHTML = '<div class="error">Error al cargar datos del agente</div>';
+        }
+    } catch (error) {
+        console.error('Error loading agent dashboard:', error);
+        dashboard.innerHTML = '<div class="error">Error al cargar el dashboard</div>';
+    }
+}
+
+function renderAgentDashboard(agent, stats, tickets) {
+    const getStatusColor = (status) => {
+        const colors = {
+            'open': '#ff6b6b',
+            'in_progress': '#4dabf7',
+            'waiting': '#ffd43b',
+            'resolved': '#51cf66',
+            'closed': '#868e96'
+        };
+        return colors[status] || '#868e96';
+    };
+
+    const getPriorityIcon = (priority) => {
+        const icons = {
+            'urgent': '🔴',
+            'high': '🟠',
+            'medium': '🔵',
+            'low': '🟢'
+        };
+        return icons[priority] || '⚪';
+    };
+
+    let html = `
+        <div class="agent-stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon" style="background-color: #6366f1;">
+                    <i class="fas fa-list"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value">${stats.total}</span>
+                    <span class="stat-label">Tickets Totales</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background-color: #f59e0b;">
+                    <i class="fas fa-hourglass-start"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value">${stats.open}</span>
+                    <span class="stat-label">Abiertos/En Progreso</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background-color: #10b981;">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value">${stats.resolved}</span>
+                    <span class="stat-label">Resueltos</span>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-icon" style="background-color: #8b5cf6;">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value">${stats.avg_resolution_hours}h</span>
+                    <span class="stat-label">Tiempo Promedio</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="agent-dashboard-grid">
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-chart-bar"></i> Por Estado</h3>
+                </div>
+                <div class="card-body">
+                    <div class="status-bars">
+                        ${stats.by_status.map(s => `
+                            <div class="status-bar-item">
+                                <div class="status-bar-label">
+                                    <span>${s.status.replace('_', ' ')}</span>
+                                    <span class="badge">${s.count}</span>
+                                </div>
+                                <div class="status-bar" style="background-color: ${getStatusColor(s.status)}; width: ${(s.count / stats.total * 100) || 0}%"></div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fas fa-exclamation-triangle"></i> Por Prioridad</h3>
+                </div>
+                <div class="card-body">
+                    <div class="priority-list">
+                        ${stats.by_priority.map(p => `
+                            <div class="priority-item">
+                                <span>${getPriorityIcon(p.priority)} ${p.priority}</span>
+                                <span class="badge">${p.count}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h3><i class="fas fa-tasks"></i> Tickets Asignados</h3>
+            </div>
+            <div class="card-body">
+                <div class="agent-tickets-table">
+                    <table class="tickets-table">
+                        <thead>
+                            <tr>
+                                <th>Ticket</th>
+                                <th>Asunto</th>
+                                <th>Estado</th>
+                                <th>Prioridad</th>
+                                <th>Categoría</th>
+                                <th>Creado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tickets.length > 0 ? tickets.map(t => `
+                                <tr class="status-${t.status}">
+                                    <td class="ticket-cell"><strong>${t.ticket_number}</strong></td>
+                                    <td>${t.title}</td>
+                                    <td>
+                                        <span class="status-badge status-${t.status}">
+                                            ${t.status.replace('_', ' ')}
+                                        </span>
+                                    </td>
+                                    <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
+                                    <td>${t.category_name || '-'}</td>
+                                    <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="7" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    return html;
+}
+
+window.loadAgentDashboard = loadAgentDashboard;
+window.loadTicketDetail = loadTicketDetail;
+window.updateTicketField = updateTicketField;
+window.toggleInfoPending = toggleInfoPending;
+window.markInfoPending = markInfoPending;
+window.markInfoComplete = markInfoComplete;
+window.addComment = addComment;
+window.goToPage = goToPage;
+window.showView = showView;
+window.toggleView = toggleView;
+window.openNewTicketModal = openNewTicketModal;
+window.submitNewTicket = submitNewTicket;
+window.switchWorkType = switchWorkType;
+window.toggleTimer = toggleTimer;
+window.resetTimer = resetTimer;
+window.saveTimer = saveTimer;
+window.assignTicketFromBacklog = assignTicketFromBacklog;
+window.confirmBacklogAssignment = confirmBacklogAssignment;
