@@ -1,7 +1,7 @@
-<?php
+﻿<?php
 /**
  * API de Tickets - Sistema de Ticketing GHL
- * Endpoints RESTful para gestión de tickets
+ * Endpoints RESTful para gestiÃ³n de tickets
  */
 
 // Define absolute paths for logging
@@ -60,15 +60,6 @@ switch ($action) {
     case 'update':
         updateTicket($pdo, $_GET['id'] ?? 0);
         break;
-    case 'request-review':
-        requestReview($pdo, $_GET['id'] ?? 0);
-        break;
-    case 'approve':
-        approveTicket($pdo, $_GET['id'] ?? 0);
-        break;
-    case 'reject':
-        rejectTicket($pdo, $_GET['id'] ?? 0);
-        break;
     case 'delete':
         deleteTicket($pdo, $_GET['id'] ?? 0);
         break;
@@ -84,9 +75,11 @@ switch ($action) {
     case 'webhook':
         handleGHLWebhook($pdo);
         break;
+    case 'test-whatsapp':
+        testWhatsAppFlow($pdo, $_GET['ticket_id'] ?? 19);
+        break;
     default:
-        echo json_encode(['error' => 'Acción no válida', 'actions' => ['list', 'get', 'create', 'update', 'delete', 'stats', 'comments', 'webhook', 'test-whatsapp']]);
-        exit;
+        echo json_encode(['error' => 'AcciÃ³n no vÃ¡lida', 'actions' => ['list', 'get', 'create', 'update', 'delete', 'stats', 'comments', 'webhook', 'test-whatsapp']]);
 }
 
 /**
@@ -187,11 +180,7 @@ function getBacklogTickets($pdo) {
             p.name as project_name,
             u1.name as created_by_name,
             u2.name as assigned_to_name,
-            (SELECT COUNT(*) FROM comments WHERE ticket_id = t.id) as comment_count,
-            (SELECT GROUP_CONCAT(CONCAT(u.id, ':', u.name, ':', ta.role) SEPARATOR '|') 
-             FROM ticket_assignments ta 
-             JOIN users u ON ta.user_id = u.id 
-             WHERE ta.ticket_id = t.id) as assigned_users
+            (SELECT COUNT(*) FROM comments WHERE ticket_id = t.id) as comment_count
             FROM tickets t
             LEFT JOIN categories c ON t.category_id = c.id
             LEFT JOIN projects p ON t.project_id = p.id
@@ -210,25 +199,6 @@ function getBacklogTickets($pdo) {
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$backlogType]);
     $tickets = $stmt->fetchAll();
-    
-    // Parsear assigned_users a array
-    foreach ($tickets as &$ticket) {
-        $ticket['assignments'] = [];
-        if (!empty($ticket['assigned_users'])) {
-            $users = explode('|', $ticket['assigned_users']);
-            foreach ($users as $user) {
-                $parts = explode(':', $user);
-                if (count($parts) >= 3) {
-                    $ticket['assignments'][] = [
-                        'id' => (int)$parts[0],
-                        'name' => $parts[1],
-                        'role' => $parts[2]
-                    ];
-                }
-            }
-        }
-        unset($ticket['assigned_users']);
-    }
     
     echo json_encode([
         'success' => true,
@@ -366,19 +336,7 @@ function createTicket($pdo) {
         
         $ticketId = $pdo->lastInsertId();
         
-        // Crear asignaciones múltiples para tickets de backlog
-        if (!empty($input['backlog'])) {
-            // Asignar a Alfonso (3) como primario y Alicia (14) como secundario
-            $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role) VALUES (?, ?, ?)");
-            $assignStmt->execute([$ticketId, 3, 'primary']);   // Alfonso
-            $assignStmt->execute([$ticketId, 14, 'secondary']); // Alicia
-        } elseif (!empty($input['assigned_to'])) {
-            // Para tickets normales, crear asignación primaria
-            $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role) VALUES (?, ?, 'primary')");
-            $assignStmt->execute([$ticketId, $input['assigned_to']]);
-        }
-        
-        // Log activity (si la función existe)
+        // Log activity (si la funciÃ³n existe)
         if (function_exists('logActivity')) {
             try {
                 logActivity($pdo, $ticketId, $input['created_by'] ?? null, 'ticket_created', null, 'Ticket creado');
@@ -401,10 +359,10 @@ function createTicket($pdo) {
             ];
             
             try {
-                // Notificar a Alfonso y Alicia (revisores)
+                // Notificar a Alfonso
                 if (function_exists('notifyTicketAssignment')) {
                     notifyTicketAssignment($pdo, 3, $ticketData);
-                    notifyTicketAssignment($pdo, 6, $ticketData);
+                    notifyTicketAssignment($pdo, 14, $ticketData);
                 }
             } catch (Exception $e) {
                 error_log('Notification error: ' . $e->getMessage());
@@ -535,16 +493,16 @@ function updateTicket($pdo, $id) {
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         
-        // Notificar si se cambió la asignación
+        // Notificar si se cambiÃ³ asignaciÃ³n desde backlog
         $notificationResult = null;
-        if (isset($input['assigned_to']) && $input['assigned_to'] != $current['assigned_to']) {
-            // Se está asignando a un nuevo usuario
+        if (isset($input['assigned_to']) && isset($input['backlog']) && (int)$input['backlog'] === 0) {
+            // Se estÃ¡ asignando desde backlog a nuevo usuario
             try {
                 $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
                 $stmt->execute([$id]);
                 $updatedTicket = $stmt->fetch();
                 
-                if (function_exists('notifyTicketAssignment') && $updatedTicket && $input['assigned_to']) {
+                if (function_exists('notifyTicketAssignment') && $updatedTicket) {
                     $ticketData = [
                         'id' => $id,
                         'ticket_number' => $updatedTicket['ticket_number'],
@@ -555,10 +513,6 @@ function updateTicket($pdo, $id) {
                     ];
                     // Notificar al nuevo asignatario
                     notifyTicketAssignment($pdo, $input['assigned_to'], $ticketData);
-                    
-                    // También crear entrada en ticket_assignments
-                    $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role, assigned_by) VALUES (?, ?, 'primary', ?)");
-                    $assignStmt->execute([$id, $input['assigned_to'], $input['user_id'] ?? null]);
                 }
             } catch (Exception $e) {
                 error_log('Notification error: ' . $e->getMessage());
@@ -570,31 +524,24 @@ function updateTicket($pdo, $id) {
             $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
             $stmt->execute([$id]);
             $updatedTicket = $stmt->fetch();
-
-            // Notificar si pasa a status 'waiting' (información pendiente)
-            if (isset($input['status']) && $input['status'] === 'waiting' &&
-                $current['status'] !== 'waiting') {
-
-                // Agregar información pendiente a los datos del ticket
-                $ticketDataWithInfo = $updatedTicket;
-                $ticketDataWithInfo['informacion_pendiente'] = $input['pending_info_details'] ?? '';
-                $ticketDataWithInfo['link_seguimiento'] = generateTrackingLink($updatedTicket['id'], $updatedTicket['ticket_number'], $pdo);
-
-                if (function_exists('notifyPendingInfo')) {
-                    notifyPendingInfo($pdo, $ticketDataWithInfo);
+            
+            // Notificar si pasa a status 'waiting' (informaciÃ³n pendiente)
+            if (isset($input['status']) && $input['status'] === 'waiting' && 
+                $current['status'] !== 'waiting' && !empty($updatedTicket['contact_phone'])) {
+                
+                if (function_exists('notifyInfoPendingWA')) {
+                    $pendingInfo = $input['pending_info_details'] ?? '';
+                    notifyInfoPendingWA($pdo, $id, $updatedTicket['contact_phone'], 
+                                      $updatedTicket['contact_name'] ?? 'Cliente', $pendingInfo);
                 }
             }
-
-            // Notificar si pasa a status 'in_progress' (en proceso)
-            if (isset($input['status']) && $input['status'] === 'in_progress' &&
-                $current['status'] !== 'in_progress') {
-
-                // Agregar link de seguimiento a los datos del ticket
-                $ticketDataWithLink = $updatedTicket;
-                $ticketDataWithLink['link_seguimiento'] = generateTrackingLink($updatedTicket['id'], $updatedTicket['ticket_number'], $pdo);
-
-                if (function_exists('notifyInProgress')) {
-                    notifyInProgress($pdo, $ticketDataWithLink);
+            
+            // Notificar si pasa a status 'in_progress' (desarrollo iniciado)
+            if (isset($input['status']) && $input['status'] === 'in_progress' && 
+                $current['status'] !== 'in_progress' && !empty($updatedTicket['contact_phone'])) {
+                
+                if (function_exists('notifyDevelopmentStartedWA')) {
+                    notifyDevelopmentStartedWA($pdo, $id, $updatedTicket['contact_phone']);
                 }
             }
         } catch (Exception $e) {
@@ -918,185 +865,5 @@ function testWhatsAppFlow($pdo) {
     
     echo "=== FIN TEST ===\n";
 }
-
-/**
- * Solicitar revisión del ticket
- * Cambia revision_status a 1 y notifica a Alfonso y Alicia
- */
-function requestReview($pdo, $id) {
-    if (!$id) {
-        echo json_encode(['success' => false, 'error' => 'ID de ticket requerido']);
-        return;
-    }
-    
-    $input = json_decode(file_get_contents('php://input'), true);
-    $deliverable = $input['deliverable'] ?? null;
-    
-    try {
-        // Obtener ticket actual
-        $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
-        $stmt->execute([$id]);
-        $ticket = $stmt->fetch();
-        
-        if (!$ticket) {
-            echo json_encode(['success' => false, 'error' => 'Ticket no encontrado']);
-            return;
-        }
-        
-        // Verificar que tiene entregable
-        $finalDeliverable = $deliverable ?? $ticket['deliverable'];
-        if (empty($finalDeliverable)) {
-            echo json_encode(['success' => false, 'error' => 'Debe ingresar un entregable antes de enviar a revisión']);
-            return;
-        }
-        
-        // Actualizar ticket - vuelve al backlog con revision_status = 1
-        $stmt = $pdo->prepare("UPDATE tickets SET revision_status = 1, deliverable = ?, status = 'waiting', backlog = 1, updated_at = NOW() WHERE id = ?");
-        $stmt->execute([$finalDeliverable, $id]);
-        
-        // Notificar a Alfonso (3) y Alicia (14)
-        if (function_exists('notifyReviewRequest')) {
-            $ticketData = [
-                'id' => $id,
-                'ticket_number' => $ticket['ticket_number'],
-                'title' => $ticket['title'],
-                'description' => $ticket['description'],
-                'deliverable' => $finalDeliverable,
-                'assigned_to_name' => $ticket['assigned_to_name'] ?? 'Sin asignar'
-            ];
-            notifyReviewRequest($pdo, $ticketData);
-        }
-        
-        // Registrar actividad
-        $stmt = $pdo->prepare("INSERT INTO activity_log (ticket_id, user_id, action, new_value, created_at) VALUES (?, ?, 'review_requested', ?, NOW())");
-        $stmt->execute([$id, $input['user_id'] ?? 1, $finalDeliverable]);
-        
-        echo json_encode(['success' => true, 'message' => 'Ticket enviado a revisión']);
-        
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-    }
-}
-
-/**
- * Aprobar ticket
- * Cambia revision_status a 2, status a resolved, y envía WhatsApp al cliente
- */
-function approveTicket($pdo, $id) {
-    if (!$id) {
-        echo json_encode(['success' => false, 'error' => 'ID de ticket requerido']);
-        return;
-    }
-    
-    $input = json_decode(file_get_contents('php://input'), true);
-    
-    try {
-        // Obtener ticket
-        $stmt = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
-        $stmt->execute([$id]);
-        $ticket = $stmt->fetch();
-        
-        if (!$ticket) {
-            echo json_encode(['success' => false, 'error' => 'Ticket no encontrado']);
-            return;
-        }
-        
-        if ($ticket['revision_status'] != 1) {
-            echo json_encode(['success' => false, 'error' => 'El ticket no está en revisión']);
-            return;
-        }
-        
-        // Actualizar ticket - sale del backlog y se resuelve
-        $stmt = $pdo->prepare("UPDATE tickets SET revision_status = 2, status = 'resolved', backlog = 0, resolved_at = NOW(), updated_at = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
-        
-        // Enviar WhatsApp al cliente con el entregable
-        if (!empty($ticket['contact_phone']) && function_exists('notifyTicketApproved')) {
-            $ticketData = [
-                'id' => $id,
-                'ticket_number' => $ticket['ticket_number'],
-                'title' => $ticket['title'],
-                'deliverable' => $ticket['deliverable'],
-                'contact_name' => $ticket['contact_name'],
-                'contact_phone' => $ticket['contact_phone'],
-                'contact_email' => $ticket['contact_email']
-            ];
-            notifyTicketApproved($pdo, $ticketData);
-        }
-        
-        // Registrar actividad
-        $stmt = $pdo->prepare("INSERT INTO activity_log (ticket_id, user_id, action, new_value, created_at) VALUES (?, ?, 'approved', ?, NOW())");
-        $stmt->execute([$id, $input['user_id'] ?? 1, 'Aprobado']);
-        
-        echo json_encode(['success' => true, 'message' => 'Ticket aprobado']);
-        
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-    }
-}
-
-/**
- * Rechazar ticket
- * Vuelve revision_status a 0 y notifica al agente asignado
- */
-function rejectTicket($pdo, $id) {
-    if (!$id) {
-        echo json_encode(['success' => false, 'error' => 'ID de ticket requerido']);
-        return;
-    }
-    
-    $input = json_decode(file_get_contents('php://input'), true);
-    $reason = $input['reason'] ?? '';
-    
-    try {
-        // Obtener ticket
-        $stmt = $pdo->prepare("SELECT t.*, u.name as assigned_to_name, u.email as assigned_to_email 
-                               FROM tickets t 
-                               LEFT JOIN users u ON t.assigned_to = u.id 
-                               WHERE t.id = ?");
-        $stmt->execute([$id]);
-        $ticket = $stmt->fetch();
-        
-        if (!$ticket) {
-            echo json_encode(['success' => false, 'error' => 'Ticket no encontrado']);
-            return;
-        }
-        
-        if ($ticket['revision_status'] != 1) {
-            echo json_encode(['success' => false, 'error' => 'El ticket no está en revisión']);
-            return;
-        }
-        
-        // Actualizar ticket - volver a revision_status = 0, sale del backlog para que el agente corrija
-        $stmt = $pdo->prepare("UPDATE tickets SET revision_status = 0, status = 'in_progress', backlog = 0, updated_at = NOW() WHERE id = ?");
-        $stmt->execute([$id]);
-        
-        // Agregar comentario interno con el motivo del rechazo
-        $stmt = $pdo->prepare("INSERT INTO comments (ticket_id, user_id, content, is_internal, created_at) VALUES (?, ?, ?, 1, NOW())");
-        $stmt->execute([$id, $input['user_id'] ?? 1, "🔴 RECHAZADO: " . $reason]);
-        
-        // Notificar al agente asignado
-        if ($ticket['assigned_to'] && function_exists('notifyTicketRejected')) {
-            $ticketData = [
-                'id' => $id,
-                'ticket_number' => $ticket['ticket_number'],
-                'title' => $ticket['title'],
-                'reason' => $reason,
-                'assigned_to' => $ticket['assigned_to'],
-                'assigned_to_name' => $ticket['assigned_to_name'],
-                'assigned_to_email' => $ticket['assigned_to_email']
-            ];
-            notifyTicketRejected($pdo, $ticketData);
-        }
-        
-        // Registrar actividad
-        $stmt = $pdo->prepare("INSERT INTO activity_log (ticket_id, user_id, action, new_value, created_at) VALUES (?, ?, 'rejected', ?, NOW())");
-        $stmt->execute([$id, $input['user_id'] ?? 1, $reason]);
-        
-        echo json_encode(['success' => true, 'message' => 'Ticket rechazado']);
-        
-    } catch (Exception $e) {
-        echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-    }
-}
 ?>
+

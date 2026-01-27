@@ -312,11 +312,90 @@ async function loadBacklogTickets(type = 'consultoria') {
         const response = await apiCall(`${TICKETS_API}?action=backlog&type=${type}`);
         
         if (response.success) {
+            // Guardar tickets en estado
+            backlogState[type].tickets = response.data;
+            backlogState[type].currentTab = 'pending';
+            
             renderBacklogTickets(response.data, type);
             updateBacklogBadge(response.total, type);
+            
+            // Cargar estadísticas del backlog
+            loadBacklogStats(type);
         }
     } catch (error) {
         console.error('Error loading backlog tickets:', error);
+    }
+}
+
+async function loadBacklogStats(type = 'consultoria') {
+    try {
+        const response = await apiCall(`${HELPERS_API}?action=backlog-stats&type=${type}`);
+        
+        if (response.success) {
+            const stats = response.data;
+            const prefix = type === 'consultoria' ? 'cons' : 'aib';
+            
+            // Actualizar métricas
+            document.getElementById(`stat-${prefix}-pending`).textContent = stats.pending;
+            document.getElementById(`stat-${prefix}-assigned`).textContent = stats.assigned;
+            document.getElementById(`stat-${prefix}-resolved`).textContent = stats.resolved;
+            document.getElementById(`stat-${prefix}-avg-time`).textContent = stats.avg_time + 'h';
+            
+            // Actualizar badges de tabs
+            document.getElementById(`tab-badge-${prefix}-pending`).textContent = stats.pending;
+            document.getElementById(`tab-badge-${prefix}-review`).textContent = stats.pending_review || 0;
+            document.getElementById(`tab-badge-${prefix}-history`).textContent = stats.history_total;
+        }
+    } catch (error) {
+        console.error('Error loading backlog stats:', error);
+    }
+}
+
+async function loadBacklogHistory(type = 'consultoria') {
+    try {
+        const response = await apiCall(`${HELPERS_API}?action=backlog-history&type=${type}`);
+        
+        if (response.success) {
+            backlogState[type].historyTickets = response.data;
+            renderBacklogTickets(response.data, type, true);
+        }
+    } catch (error) {
+        console.error('Error loading backlog history:', error);
+    }
+}
+
+async function loadBacklogPendingReview(type = 'consultoria') {
+    try {
+        const response = await apiCall(`${HELPERS_API}?action=backlog-review&type=${type}`);
+        
+        if (response.success) {
+            backlogState[type].reviewTickets = response.data;
+            renderBacklogTickets(response.data, type, false, true); // isReview = true
+        }
+    } catch (error) {
+        console.error('Error loading backlog pending review:', error);
+    }
+}
+
+function switchBacklogTab(type, tab) {
+    const prefix = type === 'consultoria' ? 'cons' : 'aib';
+    
+    // Actualizar tabs activos
+    document.getElementById(`tab-${prefix}-pending`).classList.toggle('active', tab === 'pending');
+    document.getElementById(`tab-${prefix}-review`).classList.toggle('active', tab === 'review');
+    document.getElementById(`tab-${prefix}-history`).classList.toggle('active', tab === 'history');
+    
+    backlogState[type].currentTab = tab;
+    
+    if (tab === 'pending') {
+        // Mostrar tickets pendientes (sin asignar)
+        renderBacklogTickets(backlogState[type].tickets || [], type, false, false);
+    } else if (tab === 'review') {
+        // Cargar y mostrar pendientes de revisión
+        loadBacklogPendingReview(type);
+    } else {
+        // Cargar y mostrar histórico
+        loadBacklogHistory(type);
     }
 }
 
@@ -650,53 +729,309 @@ function renderTickets() {
     renderPagination();
 }
 
-function renderBacklogTickets(tickets, type = 'consultoria') {
+// Estado para backlog
+let backlogState = {
+    consultoria: { tickets: [], historyTickets: [], view: 'list', currentTab: 'pending', filters: { project: '', category: '', priority: '', date: '' } },
+    aib: { tickets: [], historyTickets: [], view: 'list', currentTab: 'pending', filters: { project: '', category: '', priority: '', date: '' } }
+};
+
+function renderBacklogTickets(tickets, type = 'consultoria', isHistory = false, isReview = false) {
     const bodyId = type === 'aib' ? 'backlog-aib-tbody' : 'backlog-consultoria-tbody';
+    const gridId = type === 'aib' ? 'backlog-aib-grid' : 'backlog-consultoria-grid';
     const emptyId = type === 'aib' ? 'backlog-aib-empty' : 'backlog-consultoria-empty';
+    const listViewId = type === 'aib' ? 'backlog-aib-list-view' : 'backlog-consultoria-list-view';
+    const gridViewId = type === 'aib' ? 'backlog-aib-grid-view' : 'backlog-consultoria-grid-view';
     
     const tbody = document.getElementById(bodyId);
+    const grid = document.getElementById(gridId);
     const emptyState = document.getElementById(emptyId);
+    const listView = document.getElementById(listViewId);
+    const gridView = document.getElementById(gridViewId);
     
-    if (!tbody) return;
+    // Guardar tickets en estado según tipo
+    if (isHistory) {
+        backlogState[type].historyTickets = tickets || [];
+    } else if (isReview) {
+        backlogState[type].reviewTickets = tickets || [];
+    } else {
+        backlogState[type].tickets = tickets || [];
+    }
+    
+    // Aplicar filtros
+    const filteredTickets = applyBacklogFilters(tickets, type);
 
-    if (!tickets || tickets.length === 0) {
-        tbody.classList.add('hidden');
-        emptyState?.classList.remove('hidden');
+    // Determinar mensaje vacío
+    let emptyMessage = 'No hay tickets en el backlog';
+    let emptyIcon = 'inbox';
+    if (isHistory) {
+        emptyMessage = 'No hay tickets en el histórico';
+        emptyIcon = 'history';
+    } else if (isReview) {
+        emptyMessage = 'No hay tickets pendientes de revisión';
+        emptyIcon = 'search';
+    }
+
+    if (!filteredTickets || filteredTickets.length === 0) {
+        if (listView) listView.classList.add('hidden');
+        if (gridView) gridView.classList.add('hidden');
+        if (emptyState) {
+            emptyState.classList.remove('hidden');
+            emptyState.innerHTML = `
+                <i class="fas fa-${emptyIcon}" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
+                <p>${emptyMessage}</p>
+            `;
+        }
         return;
     }
 
-    tbody.classList.remove('hidden');
     emptyState?.classList.add('hidden');
+    
+    // Mostrar vista según preferencia
+    if (backlogState[type].view === 'list') {
+        listView?.classList.remove('hidden');
+        gridView?.classList.add('hidden');
+    } else {
+        listView?.classList.add('hidden');
+        gridView?.classList.remove('hidden');
+    }
 
-    tbody.innerHTML = tickets.map(ticket => `
-        <tr>
-            <td><span class="ticket-number">${ticket.ticket_number}</span></td>
-            <td>
-                <span class="project-badge">${ticket.project_name || 'Sin proyecto'}</span>
-            </td>
-            <td>
-                <strong>${escapeHtml(ticket.title)}</strong>
-                ${ticket.contact_name ? `<br><small style="color: var(--gray-500)">${escapeHtml(ticket.contact_name)}</small>` : ''}
-            </td>
-            <td><span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span></td>
-            <td>
-                ${ticket.category_name ? 
-                    `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : 
-                    '<span style="color: var(--gray-400)">—</span>'}
-            </td>
-            <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
-            <td>
-                <div style="display: flex; gap: 8px;">
-                    <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); assignTicketFromBacklog(${ticket.id}, '${type}')">
-                        <i class="fas fa-user-check"></i> Tomar
-                    </button>
-                    <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
-                        <i class="fas fa-eye"></i>
-                    </button>
+    // Render Lista
+    if (tbody) {
+        tbody.innerHTML = filteredTickets.map(ticket => {
+            // Formatear asignados
+            const assignedUsers = ticket.assignments && ticket.assignments.length > 0
+                ? ticket.assignments.map(a => `<span class="user-badge ${a.role}">${a.name}</span>`).join(' ')
+                : (ticket.assigned_to_name ? `<span class="user-badge primary">${ticket.assigned_to_name}</span>` : '<span style="color: var(--gray-400)">Sin asignar</span>');
+            
+            // Columna de acciones diferente para histórico y revisión
+            let actionsColumn;
+            if (isHistory) {
+                actionsColumn = `
+                    <td>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span class="status-badge status-${ticket.status}" style="font-size: 11px;">${getStatusLabel(ticket.status)}</span>
+                            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+            } else if (isReview) {
+                actionsColumn = `
+                    <td>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span class="status-badge status-warning" style="font-size: 11px;">En Revisión</span>
+                            <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); approveTicket(${ticket.id})" title="Aprobar">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); rejectTicket(${ticket.id})" title="Rechazar">
+                                <i class="fas fa-times"></i>
+                            </button>
+                            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+            } else {
+                actionsColumn = `
+                    <td>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); assignTicketFromBacklog(${ticket.id}, '${type}')">
+                                <i class="fas fa-user-check"></i> Tomar
+                            </button>
+                            <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+            }
+            
+            return `
+            <tr onclick="loadTicketDetail(${ticket.id})" style="cursor: pointer;">
+                <td><span class="ticket-number">${ticket.ticket_number}</span></td>
+                <td>
+                    <span class="project-badge">${ticket.project_name || 'Sin proyecto'}</span>
+                </td>
+                <td>
+                    <strong>${escapeHtml(ticket.title)}</strong>
+                    ${ticket.contact_name ? `<br><small style="color: var(--gray-500)">${escapeHtml(ticket.contact_name)}</small>` : ''}
+                </td>
+                <td>${assignedUsers}</td>
+                <td><span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span></td>
+                <td>
+                    ${ticket.category_name ? 
+                        `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : 
+                        '<span style="color: var(--gray-400)">—</span>'}
+                </td>
+                <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
+                ${actionsColumn}
+            </tr>
+        `}).join('');
+    }
+
+    // Render Grid
+    if (grid) {
+        grid.innerHTML = filteredTickets.map(ticket => {
+            // Formatear asignados para el grid
+            const assignedUsers = ticket.assignments && ticket.assignments.length > 0
+                ? ticket.assignments.map(a => `<span class="user-badge ${a.role}" style="font-size: 10px;">${a.name}</span>`).join(' ')
+                : (ticket.assigned_to_name ? `<span class="user-badge primary" style="font-size: 10px;">${ticket.assigned_to_name}</span>` : '<span style="color: var(--gray-400); font-size: 11px;">Sin asignar</span>');
+            
+            // Footer diferente para histórico y revisión
+            let cardFooter;
+            if (isHistory) {
+                cardFooter = `
+                    <div class="ticket-card-footer">
+                        <div class="ticket-meta">
+                            <span class="status-badge status-${ticket.status}" style="font-size: 10px;">${getStatusLabel(ticket.status)}</span>
+                            ${ticket.priority ? `<span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span>` : ''}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <span class="ticket-date">${formatDate(ticket.created_at)}</span>
+                        </div>
+                    </div>
+                `;
+            } else if (isReview) {
+                cardFooter = `
+                    <div class="ticket-card-footer">
+                        <div class="ticket-meta">
+                            <span class="status-badge status-warning" style="font-size: 10px;">En Revisión</span>
+                            ${ticket.priority ? `<span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span>` : ''}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;">
+                            <span class="ticket-date">${formatDate(ticket.created_at)}</span>
+                            <div style="display: flex; gap: 5px;">
+                                <button class="btn btn-sm btn-success" onclick="event.stopPropagation(); approveTicket(${ticket.id})" title="Aprobar">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); rejectTicket(${ticket.id})" title="Rechazar">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                cardFooter = `
+                    <div class="ticket-card-footer">
+                        <div class="ticket-meta">
+                            ${ticket.priority ? `<span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span>` : ''}
+                            ${ticket.category_name ? `<span class="category-badge" style="background: ${ticket.category_color}20; color: ${ticket.category_color}">${ticket.category_name}</span>` : ''}
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <span class="ticket-date">${formatDate(ticket.created_at)}</span>
+                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); assignTicketFromBacklog(${ticket.id}, '${type}')">
+                                <i class="fas fa-user-check"></i> Tomar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return `
+            <div class="ticket-card" onclick="loadTicketDetail(${ticket.id})">
+                <div class="ticket-card-header">
+                    <span class="ticket-number">${ticket.ticket_number}</span>
+                    <span class="project-badge" style="font-size: 10px;">${ticket.project_name || 'Sin proyecto'}</span>
                 </div>
-            </td>
-        </tr>
-    `).join('');
+                <div class="ticket-card-body">
+                    <h4>${escapeHtml(ticket.title)}</h4>
+                    ${ticket.contact_name ? `<div class="ticket-contact">${escapeHtml(ticket.contact_name)}</div>` : ''}
+                    ${ticket.description ? `<div class="ticket-description">${escapeHtml(ticket.description)}</div>` : ''}
+                    <div class="ticket-assignees" style="margin-top: 8px;">${assignedUsers}</div>
+                </div>
+                ${cardFooter}
+            </div>
+        `}).join('');
+    }
+}
+
+// Toggle vista backlog
+function toggleBacklogView(type, viewType) {
+    backlogState[type].view = viewType;
+    
+    // Actualizar botones
+    const listBtn = document.getElementById(`btn-view-backlog-${type === 'consultoria' ? 'cons' : 'aib'}-list`);
+    const gridBtn = document.getElementById(`btn-view-backlog-${type === 'consultoria' ? 'cons' : 'aib'}-grid`);
+    
+    listBtn?.classList.toggle('active', viewType === 'list');
+    gridBtn?.classList.toggle('active', viewType === 'grid');
+    
+    // Re-renderizar
+    renderBacklogTickets(backlogState[type].tickets, type);
+}
+
+// Aplicar filtros a backlog
+function applyBacklogFilters(tickets, type) {
+    if (!tickets) return [];
+    
+    const filters = backlogState[type].filters;
+    
+    return tickets.filter(ticket => {
+        // Filtro proyecto
+        if (filters.project && ticket.project_id != filters.project) return false;
+        
+        // Filtro categoría
+        if (filters.category && ticket.category_id != filters.category) return false;
+        
+        // Filtro prioridad
+        if (filters.priority && ticket.priority !== filters.priority) return false;
+        
+        // Filtro fecha
+        if (filters.date) {
+            const ticketDate = new Date(ticket.created_at).toISOString().split('T')[0];
+            if (ticketDate !== filters.date) return false;
+        }
+        
+        return true;
+    });
+}
+
+// Filtrar backlog
+function filterBacklog(type) {
+    const prefix = type === 'consultoria' ? 'cons' : 'aib';
+    
+    backlogState[type].filters = {
+        project: document.getElementById(`filter-backlog-${prefix}-project`)?.value || '',
+        category: document.getElementById(`filter-backlog-${prefix}-category`)?.value || '',
+        priority: document.getElementById(`filter-backlog-${prefix}-priority`)?.value || '',
+        date: document.getElementById(`filter-backlog-${prefix}-date`)?.value || ''
+    };
+    
+    renderBacklogTickets(backlogState[type].tickets, type);
+}
+
+// Limpiar filtros backlog
+function clearBacklogFilters(type) {
+    const prefix = type === 'consultoria' ? 'cons' : 'aib';
+    
+    document.getElementById(`filter-backlog-${prefix}-project`).value = '';
+    document.getElementById(`filter-backlog-${prefix}-category`).value = '';
+    document.getElementById(`filter-backlog-${prefix}-priority`).value = '';
+    document.getElementById(`filter-backlog-${prefix}-date`).value = '';
+    
+    backlogState[type].filters = { project: '', category: '', priority: '', date: '' };
+    
+    renderBacklogTickets(backlogState[type].tickets, type);
+}
+
+// Poblar selects de filtros de backlog
+function populateBacklogFilters() {
+    // Proyectos
+    const projectOptions = state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    ['filter-backlog-cons-project', 'filter-backlog-aib-project'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = `<option value="">Todos los proyectos</option>${projectOptions}`;
+    });
+    
+    // Categorías
+    const categoryOptions = state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    ['filter-backlog-cons-category', 'filter-backlog-aib-category'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = `<option value="">Todas las categorías</option>${categoryOptions}`;
+    });
 }
 
 function renderTicketDetail() {
@@ -738,6 +1073,46 @@ function renderTicketDetail() {
                             <i class="fas fa-paper-plane"></i> Enviar
                         </button>
                     </div>
+                </div>
+            </div>
+            
+            <!-- Sección Entregable -->
+            <div class="ticket-deliverable">
+                <div class="deliverable-header">
+                    <i class="fas fa-box-open"></i> Entregable
+                    ${ticket.revision_status == 1 ? '<span class="status-badge status-warning">En Revisión</span>' : ''}
+                    ${ticket.revision_status == 2 ? '<span class="status-badge status-success">Aprobado</span>' : ''}
+                </div>
+                <div class="deliverable-content">
+                    <textarea class="form-control" id="deliverable-input" rows="2" 
+                              placeholder="URL o descripción del entregable..."
+                              ${ticket.revision_status >= 1 ? 'disabled' : ''}>${escapeHtml(ticket.deliverable || '')}</textarea>
+                    ${ticket.revision_status == 0 ? `
+                    <div class="deliverable-actions">
+                        <button class="btn btn-sm btn-secondary" onclick="saveDeliverable(${ticket.id})" id="btn-save-deliverable">
+                            <i class="fas fa-save"></i> Guardar
+                        </button>
+                        <button class="btn btn-sm btn-warning" onclick="requestReview(${ticket.id})" id="btn-request-review"
+                                ${!ticket.deliverable ? 'disabled title="Primero guarda el entregable"' : ''}>
+                            <i class="fas fa-search"></i> Pendiente de Revisión
+                        </button>
+                    </div>
+                    ` : ''}
+                    ${ticket.revision_status == 1 && (state.currentUser?.id == 3 || state.currentUser?.id == 14) ? `
+                    <div class="deliverable-actions review-actions">
+                        <button class="btn btn-sm btn-success" onclick="approveTicket(${ticket.id})">
+                            <i class="fas fa-check-circle"></i> Aprobar
+                        </button>
+                        <button class="btn btn-sm btn-danger" onclick="rejectTicket(${ticket.id})">
+                            <i class="fas fa-times-circle"></i> Rechazar
+                        </button>
+                    </div>
+                    ` : ''}
+                    ${ticket.revision_status == 1 && state.currentUser?.id != 3 && state.currentUser?.id != 14 ? `
+                    <div class="deliverable-info">
+                        <i class="fas fa-hourglass-half"></i> Esperando revisión de Alfonso o Alicia
+                    </div>
+                    ` : ''}
                 </div>
             </div>
         </div>
@@ -785,6 +1160,16 @@ function renderTicketDetail() {
                 <div class="info-row">
                     <span class="label">Origen</span>
                     <span class="value">${getSourceLabel(ticket.source)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Creado</span>
+                    <span class="value">${formatDateTime(ticket.created_at)}</span>
+                </div>
+                <div class="info-row">
+                    <span class="label">Fecha Máx. Entrega</span>
+                    <input type="date" class="form-control" style="width: auto; padding: 6px 10px; font-size: 0.85rem;"
+                           value="${ticket.max_delivery_date || ''}"
+                           onchange="updateTicketField(${ticket.id}, 'max_delivery_date', this.value)">
                 </div>
                 
                 ${ticket.status === 'waiting' ? `
@@ -1329,6 +1714,118 @@ async function addComment(ticketId) {
     }
 }
 
+// =====================================================
+// Flujo de Revisión y Aprobación
+// =====================================================
+
+async function saveDeliverable(ticketId) {
+    const deliverable = document.getElementById('deliverable-input')?.value.trim();
+    
+    if (!deliverable) {
+        showToast('Ingresa el entregable', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=update&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({ deliverable })
+        });
+        
+        if (response.success) {
+            showToast('Entregable guardado', 'success');
+            state.currentTicket.deliverable = deliverable;
+            // Habilitar botón de revisión
+            const btnReview = document.getElementById('btn-request-review');
+            if (btnReview) {
+                btnReview.disabled = false;
+                btnReview.removeAttribute('title');
+            }
+        } else {
+            showToast(response.error || 'Error al guardar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function requestReview(ticketId) {
+    const deliverable = document.getElementById('deliverable-input')?.value.trim() || state.currentTicket?.deliverable;
+    
+    if (!deliverable) {
+        showToast('Primero guarda el entregable', 'warning');
+        return;
+    }
+    
+    if (!confirm('¿Enviar a revisión? Se notificará a Alfonso y Alicia.')) {
+        return;
+    }
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=request-review&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({ deliverable })
+        });
+        
+        if (response.success) {
+            showToast('Enviado a revisión. Alfonso y Alicia han sido notificados.', 'success');
+            loadTicketDetail(ticketId);
+        } else {
+            showToast(response.error || 'Error al enviar a revisión', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function approveTicket(ticketId) {
+    if (!confirm('¿Aprobar este ticket? Se enviará WhatsApp al cliente con el entregable.')) {
+        return;
+    }
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=approve&id=${ticketId}`, {
+            method: 'POST'
+        });
+        
+        if (response.success) {
+            showToast('Ticket aprobado. Cliente notificado por WhatsApp.', 'success');
+            loadTicketDetail(ticketId);
+        } else {
+            showToast(response.error || 'Error al aprobar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function rejectTicket(ticketId) {
+    const reason = prompt('Motivo del rechazo (se notificará al agente):');
+    
+    if (reason === null) return; // Canceló
+    
+    if (!reason.trim()) {
+        showToast('Debes indicar un motivo', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=reject&id=${ticketId}`, {
+            method: 'POST',
+            body: JSON.stringify({ reason: reason.trim() })
+        });
+        
+        if (response.success) {
+            showToast('Ticket rechazado. Agente notificado.', 'success');
+            loadTicketDetail(ticketId);
+        } else {
+            showToast(response.error || 'Error al rechazar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
 function goToPage(page) {
     if (page < 1 || page > state.pagination.pages) return;
     state.pagination.page = page;
@@ -1382,6 +1879,9 @@ function populateSelects() {
         projectSelect.innerHTML = '<option value="">Seleccionar...</option>' +
             state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
     }
+
+    // Poblar filtros de backlog
+    populateBacklogFilters();
 }
 
 function updateBadges() {
@@ -1498,6 +1998,18 @@ function formatDate(dateStr) {
         day: '2-digit', 
         month: 'short', 
         year: 'numeric' 
+    });
+}
+
+function formatDateTime(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('es-ES', { 
+        day: '2-digit', 
+        month: 'short', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
     });
 }
 
@@ -1866,6 +2378,10 @@ window.toggleInfoPending = toggleInfoPending;
 window.markInfoPending = markInfoPending;
 window.markInfoComplete = markInfoComplete;
 window.addComment = addComment;
+window.saveDeliverable = saveDeliverable;
+window.requestReview = requestReview;
+window.approveTicket = approveTicket;
+window.rejectTicket = rejectTicket;
 window.goToPage = goToPage;
 window.showView = showView;
 window.toggleView = toggleView;
@@ -1877,3 +2393,10 @@ window.resetTimer = resetTimer;
 window.saveTimer = saveTimer;
 window.assignTicketFromBacklog = assignTicketFromBacklog;
 window.confirmBacklogAssignment = confirmBacklogAssignment;
+window.toggleBacklogView = toggleBacklogView;
+window.filterBacklog = filterBacklog;
+window.clearBacklogFilters = clearBacklogFilters;
+window.switchBacklogTab = switchBacklogTab;
+window.loadBacklogStats = loadBacklogStats;
+window.loadBacklogHistory = loadBacklogHistory;
+window.loadBacklogPendingReview = loadBacklogPendingReview;

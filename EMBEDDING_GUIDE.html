@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guía de Embebimiento - Formularios de Ticketing</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f7fa;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            padding: 40px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1f2937;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 12px;
+            margin-bottom: 24px;
+        }
+        h2 {
+            color: #374151;
+            margin-top: 32px;
+            margin-bottom: 16px;
+        }
+        h3 {
+            color: #6b7280;
+            margin-top: 20px;
+            margin-bottom: 12px;
+        }
+        code {
+            background: #f3f4f6;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        pre {
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 16px 0;
+            line-height: 1.4;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: inherit;
+        }
+        .tab {
+            display: flex;
+            gap: 12px;
+            margin: 24px 0;
+            flex-wrap: wrap;
+        }
+        .tab-button {
+            padding: 10px 16px;
+            border: 1px solid #e5e7eb;
+            background: white;
+            cursor: pointer;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .tab-button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .tab-button:hover {
+            border-color: #667eea;
+        }
+        .tab-content {
+            display: none;
+            margin-top: 16px;
+            padding: 16px;
+            background: #f9fafb;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .alert {
+            padding: 16px;
+            border-radius: 6px;
+            margin: 16px 0;
+        }
+        .alert-info {
+            background: #dbeafe;
+            border-left: 4px solid #3b82f6;
+            color: #1e40af;
+        }
+        .alert-warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            color: #92400e;
+        }
+        .alert-success {
+            background: #dcfce7;
+            border-left: 4px solid #22c55e;
+            color: #166534;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        th {
+            background: #f3f4f6;
+            font-weight: 600;
+        }
+        tr:hover {
+            background: #f9fafb;
+        }
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        .btn {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        .btn-secondary:hover {
+            background: #d1d5db;
+        }
+        .form-list {
+            list-style: none;
+        }
+        .form-list li {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f9fafb;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+        }
+        .example-box {
+            background: #f0fdf4;
+            border: 1px solid #dcfce7;
+            border-radius: 6px;
+            padding: 16px;
+            margin: 16px 0;
+        }
+        .copy-button {
+            background: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            margin-top: 8px;
+        }
+        .copy-button:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 Guía de Embebimiento - Formularios de Ticketing</h1>
+        
+        <div class="alert alert-info">
+            <strong>ℹ️ Información:</strong> Esta guía te explica cómo embeber los formularios de creación de tickets en tu sitio web.
+        </div>
+
+        <h2>Formularios Disponibles</h2>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>Proyecto</th>
+                    <th>URL Formulario</th>
+                    <th>Color</th>
+                    <th>Icono</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>IMP</strong></td>
+                    <td><code>/forms/form-imp.html</code></td>
+                    <td>Púrpura/Violeta</td>
+                    <td>👔 Briefcase</td>
+                </tr>
+                <tr>
+                    <td><strong>Soul Tech IA</strong></td>
+                    <td><code>/forms/form-soultech.html</code></td>
+                    <td>Rosa/Rojo</td>
+                    <td>🤖 Robot</td>
+                </tr>
+                <tr>
+                    <td><strong>Despacho Briones</strong></td>
+                    <td><code>/forms/form-despacho.html</code></td>
+                    <td>Azul Cian</td>
+                    <td>⚖️ Gavel</td>
+                </tr>
+                <tr>
+                    <td><strong>CMP</strong></td>
+                    <td><code>/forms/form-cmp.html</code></td>
+                    <td>Naranja/Amarillo</td>
+                    <td>🛒 Shopping Cart</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Opción 1: Embeber en iFrame (Recomendado)</h2>
+        
+        <p>La forma más simple de embeber los formularios es usando un iFrame HTML5.</p>
+
+        <h3>Código Básico</h3>
+        
+        <div class="tab">
+            <button class="tab-button active" onclick="switchTab(event, 'imp')">IMP</button>
+            <button class="tab-button" onclick="switchTab(event, 'soul')">Soul Tech IA</button>
+            <button class="tab-button" onclick="switchTab(event, 'despacho')">Despacho Briones</button>
+            <button class="tab-button" onclick="switchTab(event, 'cmp')">CMP</button>
+        </div>
+
+        <div id="imp" class="tab-content active">
+            <pre><code>&lt;!-- IMP --&gt;
+&lt;iframe 
+    src="http://localhost/Ticketing%20System/forms/form-imp.html"
+    width="500"
+    height="700"
+    frameborder="0"
+    style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+&lt;/iframe&gt;</code></pre>
+            <button class="copy-button" onclick="copyToClipboard(this)">Copiar código</button>
+        </div>
+
+        <div id="soul" class="tab-content">
+            <pre><code>&lt;!-- Soul Tech IA --&gt;
+&lt;iframe 
+    src="http://localhost/Ticketing%20System/forms/form-soultech.html"
+    width="500"
+    height="700"
+    frameborder="0"
+    style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+&lt;/iframe&gt;</code></pre>
+            <button class="copy-button" onclick="copyToClipboard(this)">Copiar código</button>
+        </div>
+
+        <div id="despacho" class="tab-content">
+            <pre><code>&lt;!-- Despacho Briones --&gt;
+&lt;iframe 
+    src="http://localhost/Ticketing%20System/forms/form-despacho.html"
+    width="500"
+    height="700"
+    frameborder="0"
+    style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+&lt;/iframe&gt;</code></pre>
+            <button class="copy-button" onclick="copyToClipboard(this)">Copiar código</button>
+        </div>
+
+        <div id="cmp" class="tab-content">
+            <pre><code>&lt;!-- CMP --&gt;
+&lt;iframe 
+    src="http://localhost/Ticketing%20System/forms/form-cmp.html"
+    width="500"
+    height="700"
+    frameborder="0"
+    style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+&lt;/iframe&gt;</code></pre>
+            <button class="copy-button" onclick="copyToClipboard(this)">Copiar código</button>
+        </div>
+
+        <div class="alert alert-warning">
+            <strong>⚠️ Importante:</strong> Reemplaza <code>http://localhost</code> con tu dominio real (ej: <code>https://tudominio.com</code>)
+        </div>
+
+        <h2>Personalizaciones</h2>
+
+        <h3>Ajustar Tamaño</h3>
+        <pre><code>&lt;iframe 
+    src="http://localhost/Ticketing%20System/forms/form-imp.html"
+    width="600"          &lt;!-- Ancho en píxeles --&gt;
+    height="800"         &lt;!-- Alto en píxeles --&gt;
+    frameborder="0"
+    style="..."&gt;
+&lt;/iframe&gt;</code></pre>
+
+        <h3>Hacer Responsivo</h3>
+        <pre><code>&lt;div style="width: 100%; max-width: 500px; margin: 0 auto;"&gt;
+    &lt;iframe 
+        src="http://localhost/Ticketing%20System/forms/form-imp.html"
+        width="100%"
+        height="700"
+        frameborder="0"
+        style="display: block; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+    &lt;/iframe&gt;
+&lt;/div&gt;</code></pre>
+
+        <h3>CSS Personalizado</h3>
+        <pre><code>&lt;style&gt;
+    .ticketing-form-container {
+        width: 100%;
+        max-width: 500px;
+        margin: 40px auto;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+    
+    .ticketing-form-container iframe {
+        width: 100%;
+        height: 700px;
+        border: none;
+        display: block;
+    }
+&lt;/style&gt;
+
+&lt;div class="ticketing-form-container"&gt;
+    &lt;iframe src="http://localhost/Ticketing%20System/forms/form-imp.html"&gt;&lt;/iframe&gt;
+&lt;/div&gt;</code></pre>
+
+        <h2>Opción 2: Enlace Directo</h2>
+        
+        <p>Si prefieres simplemente dirigir usuarios al formulario en una página nueva:</p>
+
+        <pre><code>&lt;a href="http://localhost/Ticketing%20System/forms/form-imp.html" 
+   target="_blank" 
+   class="btn btn-primary"&gt;
+    Crear Ticket IMP
+&lt;/a&gt;</code></pre>
+
+        <h2>Flujo Esperado</h2>
+
+        <ol style="line-height: 2; margin-left: 20px;">
+            <li>Usuario abre formulario (embebido o directo)</li>
+            <li>Rellena campos: Título, Descripción, Contacto (opcional)</li>
+            <li>Selecciona categoría y prioridad</li>
+            <li>Click "Enviar Ticket"</li>
+            <li>Validación lado cliente</li>
+            <li>Toast: "✅ Ticket creado exitosamente"</li>
+            <li>Ticket aparece en "Backlog Consultoría" del sistema</li>
+            <li>Equipo toma ticket y comienza trabajo</li>
+        </ol>
+
+        <h2>Validación</h2>
+
+        <p>Los formularios validan:</p>
+        <ul style="margin-left: 20px; line-height: 1.8;">
+            <li>✓ Título es requerido (no puede estar vacío)</li>
+            <li>✓ Descripción es requerida (no puede estar vacío)</li>
+            <li>✓ Email tiene formato válido (si se proporciona)</li>
+            <li>✓ Campos vacíos se limpian antes de envío</li>
+            <li>✓ Conexión a servidor se valida</li>
+        </ul>
+
+        <h2>Notificaciones</h2>
+
+        <p>El usuario recibe notificaciones en los siguientes casos:</p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Evento</th>
+                    <th>Mensaje</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Ticket creado exitosamente</td>
+                    <td>✅ Ticket P-20250122-XXXX creado exitosamente</td>
+                    <td>Success</td>
+                </tr>
+                <tr>
+                    <td>Error en creación</td>
+                    <td>Error al crear el ticket</td>
+                    <td>Error</td>
+                </tr>
+                <tr>
+                    <td>Conexión fallida</td>
+                    <td>Error de conexión</td>
+                    <td>Error</td>
+                </tr>
+                <tr>
+                    <td>Campo requerido vacío</td>
+                    <td>Título y descripción son requeridos</td>
+                    <td>Error</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Integración con Página Principal</h2>
+
+        <h3>Ejemplo: Sección de Contacto</h3>
+        <pre><code>&lt;section id="contacto"&gt;
+    &lt;h1&gt;Crear un Ticket&lt;/h1&gt;
+    &lt;p&gt;Reporta tu consultoría directamente desde aquí.&lt;/p&gt;
+    
+    &lt;div style="max-width: 500px; margin: 40px auto;"&gt;
+        &lt;iframe 
+            src="https://midominio.com/Ticketing%20System/forms/form-imp.html"
+            width="100%"
+            height="700"
+            frameborder="0"
+            style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);"&gt;
+        &lt;/iframe&gt;
+    &lt;/div&gt;
+&lt;/section&gt;</code></pre>
+
+        <h2>Troubleshooting</h2>
+
+        <h3>Problema: El formulario no carga</h3>
+        <ul style="margin-left: 20px;">
+            <li>✓ Verifica que la URL es correcta (sin espacios sin codificar)</li>
+            <li>✓ Verifica que el servidor está corriendo</li>
+            <li>✓ Abre URL directa en navegador para testear</li>
+            <li>✓ Revisa consola del navegador (F12) para errores</li>
+        </ul>
+
+        <h3>Problema: Las categorías no aparecen</h3>
+        <ul style="margin-left: 20px;">
+            <li>✓ Verifica que hay categorías en la BD</li>
+            <li>✓ Verifica que API está accesible</li>
+            <li>✓ Revisa consola (F12) para errores de fetch</li>
+            <li>✓ Verifica CORS si está en diferente dominio</li>
+        </ul>
+
+        <h3>Problema: El ticket no se crea</h3>
+        <ul style="margin-left: 20px;">
+            <li>✓ Verifica que completaste título y descripción</li>
+            <li>✓ Revisa consola (F12) para ver respuesta de servidor</li>
+            <li>✓ Verifica que /api/tickets.php está accesible</li>
+            <li>✓ Verifica que PROJECT_ID es correcto en el formulario</li>
+        </ul>
+
+        <h2>Seguridad</h2>
+
+        <div class="alert alert-warning">
+            <strong>⚠️ Considera:</strong>
+            <ul style="margin-top: 8px; margin-left: 20px;">
+                <li>Los formularios hacen requests a tu API</li>
+                <li>CORS debe estar configurado si se usan en diferente dominio</li>
+                <li>Los datos se envían sin encripción (usa HTTPS en producción)</li>
+                <li>Validación ocurre tanto lado cliente como servidor</li>
+            </ul>
+        </div>
+
+        <h2>Más Información</h2>
+
+        <p>Para más detalles sobre el sistema de ticketing:</p>
+        <ul style="margin-left: 20px;">
+            <li><strong>Documentación Completa:</strong> BACKLOG_FORMS_README.md</li>
+            <li><strong>Cambios Técnicos:</strong> CHANGELOG.md</li>
+            <li><strong>API Endpoints:</strong> /api/tickets.php</li>
+        </ul>
+
+        <h2>Soporte</h2>
+
+        <div class="alert alert-info">
+            <strong>¿Necesitas ayuda?</strong><br>
+            Contacta al equipo técnico con:
+            <ul style="margin-top: 8px; margin-left: 20px;">
+                <li>URL donde embebiste el formulario</li>
+                <li>Captura de pantalla del error (si aplica)</li>
+                <li>Consola del navegador (F12 → Console)</li>
+            </ul>
+        </div>
+
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af;">
+            <p>Sistema de Ticketing v1.0 © 2026</p>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(event, tabName) {
+            // Hide all tabs
+            const contents = document.querySelectorAll('.tab-content');
+            contents.forEach(el => el.classList.remove('active'));
+            
+            // Remove active from all buttons
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(el => el.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function copyToClipboard(button) {
+            const pre = button.previousElementSibling;
+            const text = pre.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                button.textContent = '✅ Copiado!';
+                setTimeout(() => {
+                    button.textContent = 'Copiar código';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

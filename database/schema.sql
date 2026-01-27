@@ -50,6 +50,18 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabla de Proyectos
+CREATE TABLE IF NOT EXISTS projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    description TEXT,
+    client_id INT DEFAULT NULL,
+    status ENUM('active', 'inactive', 'archived') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (client_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
 -- Tabla de Tickets
 CREATE TABLE IF NOT EXISTS tickets (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -64,6 +76,29 @@ CREATE TABLE IF NOT EXISTS tickets (
     assigned_to INT DEFAULT NULL,
     ticket_type ENUM('internal', 'client') DEFAULT 'client',
     source ENUM('internal', 'external', 'form', 'api') DEFAULT 'internal',
+    
+    -- Nuevo: Tipo de trabajo (Puntual, Recurrente, Soporte)
+    work_type ENUM('puntual', 'recurrente', 'soporte') DEFAULT 'puntual',
+    
+    -- Campos comunes para Puntual y Soporte
+    start_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    end_date DATETIME NULL,
+    hours_dedicated DECIMAL(10, 2) DEFAULT 0,
+    
+    -- Campos para Puntual
+    max_delivery_date DATE NULL,
+    project_id INT NULL,
+    briefing_url VARCHAR(500) NULL,
+    video_url VARCHAR(500) NULL,
+    info_pending_status BOOLEAN DEFAULT FALSE,
+    revision_status BOOLEAN DEFAULT FALSE,
+    
+    -- Campos para Recurrente
+    monthly_hours DECIMAL(10, 2) DEFAULT 0,
+    
+    -- Campos para Soporte
+    score DECIMAL(3, 1) NULL,
+    
     ghl_form_id VARCHAR(100) DEFAULT NULL,
     ghl_contact_id VARCHAR(100) DEFAULT NULL,
     ghl_location_id VARCHAR(100) DEFAULT NULL,
@@ -79,7 +114,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL,
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
 );
 
 -- Tabla de Comentarios/Respuestas

@@ -9,10 +9,10 @@ if (!defined("GHL_API_BASE")) {
     require_once __DIR__ . "/../config/database.php";
     setCorsHeaders();
     define("GHL_API_BASE", "https://services.leadconnectorhq.com");
-    define("GHL_API_KEY", "pit-2c52c956-5347-4a29-99a8-723a0e2d4afd");
+    define("GHL_API_KEY", "pit-a1b15aff-7e5e-4066-adb9-c9eebab897ea");
     define("GHL_API_VERSION", "2021-07-28");
     define("GHL_COMPANY_ID", "Pv6up4LdwbGskR3X9qdH");
-    define("GHL_LOCATION_ID", "sBhcSc6UurgGMeTV10TC");
+    define("GHL_LOCATION_ID", "NYp3yidBIbmOdKtTKdgU");
 }
 
 /**
@@ -111,8 +111,32 @@ function syncUsers($pdo, $locationId = null) {
     
     $synced = 0;
     foreach ($result["users"] ?? [] as $user) {
-        $stmt = $pdo->prepare("INSERT INTO users (id, name, email, phone, role, is_active) VALUES (?, ?, ?, ?, ?, 1) ON DUPLICATE KEY UPDATE name = ?, email = ?, phone = ?, role = ?");
-        $stmt->execute([$user["id"] ?? null, $user["firstName"] ?? "", $user["email"] ?? "", $user["phone"] ?? "", $user["role"] ?? "user", $user["firstName"] ?? "", $user["email"] ?? "", $user["phone"] ?? "", $user["role"] ?? "user"]);
+        // Check if user already exists by ghl_user_id
+        $checkStmt = $pdo->prepare("SELECT id FROM users WHERE ghl_user_id = ?");
+        $checkStmt->execute([$user["id"] ?? null]);
+        $existingUser = $checkStmt->fetch();
+        
+        if ($existingUser) {
+            // Update existing user
+            $stmt = $pdo->prepare("UPDATE users SET name = ?, email = ?, phone = ?, ghl_location_id = ?, is_active = 1 WHERE ghl_user_id = ?");
+            $stmt->execute([
+                trim(($user["firstName"] ?? "") . " " . ($user["lastName"] ?? "")),
+                $user["email"] ?? "",
+                $user["phone"] ?? "",
+                $locationId,
+                $user["id"]
+            ]);
+        } else {
+            // Insert new user
+            $stmt = $pdo->prepare("INSERT INTO users (name, email, phone, role, ghl_user_id, ghl_location_id, is_active) VALUES (?, ?, ?, 'agent', ?, ?, 1)");
+            $stmt->execute([
+                trim(($user["firstName"] ?? "") . " " . ($user["lastName"] ?? "")),
+                $user["email"] ?? "",
+                $user["phone"] ?? "",
+                $user["id"],
+                $locationId
+            ]);
+        }
         $synced++;
     }
     echo json_encode(["success" => true, "synced" => $synced]);
@@ -122,10 +146,11 @@ function debugToken() {
     echo json_encode(["message" => "Token debug", "api_base" => GHL_API_BASE, "api_key" => "pit-****"]);
 }
 
-// Si se accede directamente como router, ejecutar acciones
-if (php_sapi_name() !== "cli" && isset($_GET["action"])) {
+// Solo ejecutar router si se accede DIRECTAMENTE a este archivo (no incluido)
+$isDirectAccess = basename($_SERVER['SCRIPT_FILENAME'] ?? '') === 'ghl.php';
+if ($isDirectAccess && php_sapi_name() !== "cli" && isset($_GET["action"])) {
     $action = $_GET["action"];
-    $pdo = $GLOBALS["pdo"] ?? (isset($pdo) ? $pdo : null);
+    $pdo = getConnection(); // Obtener conexión a la base de datos
     
     switch ($action) {
         case "sync-locations":

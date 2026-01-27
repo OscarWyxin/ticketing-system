@@ -1,15 +1,18 @@
 <?php
 /**
- * Configuración de Base de Datos
+ * Configuración de Base de Datos - PRODUCCIÓN (Hostinger)
  * Sistema de Ticketing - GHL Embeddable
  * 
- * Usa variables de entorno si existen (Docker), sino usa valores por defecto (local)
+ * INSTRUCCIONES:
+ * 1. Renombra este archivo a: database.php
+ * 2. Reemplaza los valores con los de tu panel de Hostinger
  */
 
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_NAME', getenv('DB_NAME') ?: 'ticketing_system');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') ?: '');
+// ⚠️ REEMPLAZA ESTOS VALORES CON LOS DE TU HOSTINGER:
+define('DB_HOST', 'localhost');  // Generalmente es localhost en Hostinger
+define('DB_NAME', 'u123456789_ticketing');  // Ejemplo: u123456789_nombrebd
+define('DB_USER', 'u123456789_usuario');    // Ejemplo: u123456789_usuario
+define('DB_PASS', 'TuPasswordSeguro123!');  // La contraseña que creaste
 
 // Conexión PDO
 function getConnection() {
