@@ -1380,6 +1380,27 @@ function populateNewTicketSelects() {
         assignedSelect.innerHTML = '<option value="">Sin asignar</option>' +
             state.agents.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
     }
+    
+    // Projects - Puntual
+    const projectSelect = document.getElementById('new-ticket-project');
+    if (projectSelect && state.projects.length) {
+        projectSelect.innerHTML = '<option value="">Seleccionar...</option>' +
+            state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+    
+    // Projects - Recurrente
+    const projectSelectRecurrente = document.getElementById('new-ticket-project-recurrente');
+    if (projectSelectRecurrente && state.projects.length) {
+        projectSelectRecurrente.innerHTML = '<option value="">Seleccionar...</option>' +
+            state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
+    
+    // Projects - Soporte
+    const projectSelectSoporte = document.getElementById('new-ticket-project-soporte');
+    if (projectSelectSoporte && state.projects.length) {
+        projectSelectSoporte.innerHTML = '<option value="">Seleccionar...</option>' +
+            state.projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+    }
 }
 
 
@@ -1512,6 +1533,10 @@ async function submitNewTicket(e) {
     
     // Añadir datos por defecto
     data.created_by = 1; // TODO: Usuario actual
+    data.source = 'dashboard'; // Marca que viene del dashboard, no de formulario
+    
+    // NO enviar a backlog - va directo al usuario asignado
+    // data.backlog = false; // No necesitamos enviarlo, por defecto es false
     
     // Limpiar todos los campos vacíos
     Object.keys(data).forEach(key => {
@@ -1522,18 +1547,25 @@ async function submitNewTicket(e) {
     
     // Procesar campos según el tipo de trabajo
     if (workType === 'puntual') {
-        // Puntual no requiere horas en la creación
+        // Puntual usa project_id directamente
         delete data.monthly_hours;
         delete data.score;
         delete data.hours_dedicated;
+        delete data.project_id_recurrente;
+        delete data.project_id_soporte;
     } else if (workType === 'recurrente') {
         if (!data.monthly_hours) {
             showToast('Las horas mensuales son requeridas para trabajos recurrentes', 'error');
             return;
         }
+        // Usar project_id_recurrente como project_id
+        if (data.project_id_recurrente) {
+            data.project_id = data.project_id_recurrente;
+        }
+        delete data.project_id_recurrente;
+        delete data.project_id_soporte;
         // Limpiar campos de otros tipos
         delete data.hours_dedicated;
-        delete data.project_id;
         delete data.max_delivery_date;
         delete data.briefing_url;
         delete data.video_url;
@@ -1541,9 +1573,14 @@ async function submitNewTicket(e) {
         delete data.revision_status;
         delete data.score;
     } else if (workType === 'soporte') {
+        // Usar project_id_soporte como project_id
+        if (data.project_id_soporte) {
+            data.project_id = data.project_id_soporte;
+        }
+        delete data.project_id_recurrente;
+        delete data.project_id_soporte;
         // Soporte no requiere campos específicos obligatorios
         delete data.hours_dedicated;
-        delete data.project_id;
         delete data.max_delivery_date;
         delete data.briefing_url;
         delete data.video_url;

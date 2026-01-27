@@ -748,19 +748,11 @@
                         </div>
 
                         <div class="form-column">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Asignar a</label>
-                                    <select name="assigned_to" id="new-ticket-assigned" class="form-control">
-                                        <option value="">Sin asignar</option>
-                                    </select>
-                                </div>
-                                <div class="form-group">
-                                    <label>Cliente/Cuenta</label>
-                                    <select name="client_id" id="new-ticket-client" class="form-control">
-                                        <option value="">Seleccionar...</option>
-                                    </select>
-                                </div>
+                            <div class="form-group">
+                                <label>Asignar a</label>
+                                <select name="assigned_to" id="new-ticket-assigned" class="form-control">
+                                    <option value="">Sin asignar</option>
+                                </select>
                             </div>
 
                             <div class="form-group" id="new-ticket-internal-section">
@@ -807,6 +799,12 @@
                         <div class="form-grid">
                             <div class="form-column">
                                 <div class="form-group">
+                                    <label>Proyecto</label>
+                                    <select name="project_id_recurrente" id="new-ticket-project-recurrente" class="form-control">
+                                        <option value="">Seleccionar...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
                                     <label>Horas Mensuales</label>
                                     <input type="number" name="monthly_hours" id="monthly_hours" class="form-control" step="0.5" min="0" placeholder="10">
                                 </div>
@@ -819,6 +817,12 @@
                         <div class="section-divider">Detalles del Soporte</div>
                         <div class="form-grid">
                             <div class="form-column">
+                                <div class="form-group">
+                                    <label>Proyecto</label>
+                                    <select name="project_id_soporte" id="new-ticket-project-soporte" class="form-control">
+                                        <option value="">Seleccionar...</option>
+                                    </select>
+                                </div>
                                 <div class="form-group">
                                     <label>Puntuación de Satisfacción</label>
                                     <select name="score" id="score" class="form-control">
