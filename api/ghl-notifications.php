@@ -266,6 +266,425 @@ function sendTicketWebhook($pdo, $ticketData, $notificationType) {
 }
 
 /**
+ * Enviar email al contacto del ticket
+ * @param PDO $pdo - Conexión a BD
+ * @param array $ticketData - Datos del ticket
+ * @param string $notificationType - Tipo: ticket_created, pending_info, in_progress, ticket_approved
+ */
+function sendEmailToContact($pdo, $ticketData, $notificationType) {
+    notifLog("=== ENVIANDO EMAIL AL CONTACTO: $notificationType ===");
+    
+    $contactEmail = $ticketData['contact_email'] ?? null;
+    $contactName = $ticketData['contact_name'] ?? 'Cliente';
+    $contactPhone = $ticketData['contact_phone'] ?? null;
+    
+    if (empty($contactEmail)) {
+        notifLog("sendEmailToContact: No hay email de contacto");
+        return ['success' => false, 'error' => 'No contact email'];
+    }
+    
+    notifLog("Email destino: $contactEmail - Nombre: $contactName");
+    
+    // Buscar o crear contacto en GHL
+    $contactId = null;
+    if ($contactPhone) {
+        $contactId = findOrCreateGHLContact($contactPhone, $contactName, $contactEmail);
+    } else {
+        $contactId = findOrCreateContact($contactEmail, $contactName);
+    }
+    
+    if (!$contactId) {
+        notifLog("ERROR: No se pudo obtener/crear contacto en GHL");
+        return ['success' => false, 'error' => 'Could not create GHL contact'];
+    }
+    
+    // Generar el template de email
+    $emailContent = getClientEmailTemplate($notificationType, $ticketData, $contactName);
+    $subject = $emailContent['subject'];
+    $html = $emailContent['html'];
+    
+    // Enviar email via GHL
+    $emailData = [
+        'type' => 'Email',
+        'contactId' => $contactId,
+        'subject' => $subject,
+        'html' => $html
+    ];
+    
+    $result = ghlApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
+    notifLog("Resultado email a contacto: " . json_encode($result));
+    
+    $success = !isset($result['error']);
+    notifLog("Email enviado: " . ($success ? 'OK' : 'ERROR'));
+    
+    return [
+        'success' => $success,
+        'contactId' => $contactId,
+        'result' => $result
+    ];
+}
+
+/**
+ * Generar template de email para clientes
+ * @param string $type - Tipo de notificación
+ * @param array $data - Datos del ticket
+ * @param string $contactName - Nombre del contacto
+ * @return array - ['subject' => string, 'html' => string]
+ */
+function getClientEmailTemplate($type, $data, $contactName) {
+    $ticketNumber = $data['ticket_number'] ?? 'N/A';
+    $title = htmlspecialchars($data['title'] ?? 'Sin título');
+    $description = nl2br(htmlspecialchars($data['description'] ?? ''));
+    $priority = $data['priority'] ?? 'medium';
+    $trackingLink = $data['tracking_link'] ?? '#';
+    $deliverable = htmlspecialchars($data['deliverable'] ?? '');
+    $assignedName = htmlspecialchars($data['assigned_to_name'] ?? 'Nuestro equipo');
+    $pendingInfo = htmlspecialchars($data['informacion_pendiente'] ?? 'Por favor, proporciona la información solicitada.');
+    
+    $priorityColors = [
+        'urgent' => '#dc3545',
+        'high' => '#fd7e14', 
+        'medium' => '#ffc107',
+        'low' => '#28a745'
+    ];
+    $priorityLabels = [
+        'urgent' => 'Urgente',
+        'high' => 'Alta',
+        'medium' => 'Media',
+        'low' => 'Baja'
+    ];
+    $priorityColor = $priorityColors[$priority] ?? '#ffc107';
+    $priorityLabel = $priorityLabels[$priority] ?? 'Media';
+    
+    switch ($type) {
+        case 'ticket_created':
+            return [
+                'subject' => "✅ Ticket #{$ticketNumber} Creado - {$title}",
+                'html' => "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>✅</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>¡Ticket Creado!</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>Hemos recibido tu solicitud</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$contactName}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>Tu ticket ha sido creado exitosamente y nuestro equipo lo revisará pronto.</p>
+                            
+                            <!-- Ticket Info Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background: linear-gradient(135deg, #faf5ff 0%, #f0f9ff 100%); border-radius: 12px; border: 1px solid #e9d5ff;'>
+                                <tr>
+                                    <td style='padding: 25px;'>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td style='padding-bottom: 15px;'>
+                                                    <span style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Número de Ticket</span>
+                                                    <div style='color: #8b5cf6; font-size: 24px; font-weight: 700; margin-top: 5px;'>#{$ticketNumber}</div>
+                                                </td>
+                                                <td style='padding-bottom: 15px; text-align: right;'>
+                                                    <span style='background-color: {$priorityColor}; color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;'>{$priorityLabel}</span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan='2' style='padding-top: 15px; border-top: 1px solid #e9d5ff;'>
+                                                    <span style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Asunto</span>
+                                                    <div style='color: #1f2937; font-size: 18px; font-weight: 600; margin-top: 5px;'>{$title}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
+                                <tr>
+                                    <td align='center'>
+                                        <a href='{$trackingLink}' style='display: inline-block; background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;'>
+                                            📋 Seguir Mi Ticket
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style='margin: 30px 0 0; font-size: 14px; color: #9ca3af; text-align: center;'>Te notificaremos cuando haya actualizaciones en tu ticket.</p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Mensaje automático</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"
+            ];
+            
+        case 'pending_info':
+            return [
+                'subject' => "⚠️ Información Requerida - Ticket #{$ticketNumber}",
+                'html' => "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>⚠️</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>Información Requerida</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>Necesitamos más datos para continuar</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$contactName}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>Para poder continuar con tu ticket <strong>#{$ticketNumber}</strong>, necesitamos que nos proporciones información adicional.</p>
+                            
+                            <!-- Alert Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #fffbeb; border-radius: 12px; border: 2px solid #fbbf24;'>
+                                <tr>
+                                    <td style='padding: 25px;'>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td width='50' valign='top'>
+                                                    <div style='font-size: 28px;'>📋</div>
+                                                </td>
+                                                <td>
+                                                    <div style='color: #92400e; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;'>Información Solicitada</div>
+                                                    <div style='color: #78350f; font-size: 16px; line-height: 1.6;'>{$pendingInfo}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
+                                <tr>
+                                    <td align='center'>
+                                        <a href='{$trackingLink}' style='display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;'>
+                                            💬 Responder Ahora
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style='margin: 30px 0 0; font-size: 14px; color: #9ca3af; text-align: center;'>Tu respuesta nos ayudará a resolver tu solicitud más rápido.</p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Mensaje automático</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"
+            ];
+            
+        case 'in_progress':
+            return [
+                'subject' => "🔧 En Proceso - Ticket #{$ticketNumber}",
+                'html' => "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>🔧</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>¡Estamos Trabajando!</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>Tu solicitud está en proceso</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$contactName}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>Queremos informarte que ya estamos trabajando en tu ticket.</p>
+                            
+                            <!-- Status Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%); border-radius: 12px; border: 1px solid #bfdbfe;'>
+                                <tr>
+                                    <td style='padding: 25px;'>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td width='60' valign='top'>
+                                                    <div style='width: 50px; height: 50px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); border-radius: 12px; text-align: center; line-height: 50px; font-size: 24px;'>⚙️</div>
+                                                </td>
+                                                <td style='padding-left: 15px;'>
+                                                    <div style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Estado Actual</div>
+                                                    <div style='color: #1d4ed8; font-size: 20px; font-weight: 700; margin-top: 5px;'>En Proceso</div>
+                                                    <div style='color: #6b7280; font-size: 14px; margin-top: 5px;'>Ticket #{$ticketNumber}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 20px; padding-top: 20px; border-top: 1px solid #bfdbfe;'>
+                                            <tr>
+                                                <td>
+                                                    <div style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Asignado a</div>
+                                                    <div style='color: #1f2937; font-size: 16px; font-weight: 600; margin-top: 5px;'>👤 {$assignedName}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
+                                <tr>
+                                    <td align='center'>
+                                        <a href='{$trackingLink}' style='display: inline-block; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;'>
+                                            👁️ Ver Progreso
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style='margin: 30px 0 0; font-size: 14px; color: #9ca3af; text-align: center;'>Te notificaremos cuando esté listo.</p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Mensaje automático</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"
+            ];
+            
+        case 'ticket_approved':
+            return [
+                'subject' => "🎉 ¡Completado! - Ticket #{$ticketNumber}",
+                'html' => "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>🎉</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>¡Ticket Completado!</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>Tu solicitud ha sido finalizada</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$contactName}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>¡Excelentes noticias! Tu ticket <strong>#{$ticketNumber}</strong> ha sido completado y aprobado.</p>
+                            
+                            <!-- Success Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-radius: 12px; border: 1px solid #6ee7b7;'>
+                                <tr>
+                                    <td style='padding: 25px;'>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td width='60' valign='top'>
+                                                    <div style='width: 50px; height: 50px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 50%; text-align: center; line-height: 50px; font-size: 24px;'>✓</div>
+                                                </td>
+                                                <td style='padding-left: 15px;'>
+                                                    <div style='color: #065f46; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;'>Entregable</div>
+                                                    <div style='color: #047857; font-size: 16px; margin-top: 8px; line-height: 1.5;'>" . ($deliverable ?: 'Tu solicitud ha sido procesada exitosamente.') . "</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- CTA Button -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
+                                <tr>
+                                    <td align='center'>
+                                        <a href='{$trackingLink}' style='display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; padding: 16px 40px; text-decoration: none; border-radius: 10px; font-weight: 600; font-size: 16px;'>
+                                            📄 Ver Detalles
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style='margin: 30px 0 0; font-size: 14px; color: #9ca3af; text-align: center;'>¡Gracias por confiar en nosotros!</p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Mensaje automático</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>"
+            ];
+            
+        default:
+            return [
+                'subject' => "Actualización Ticket #{$ticketNumber}",
+                'html' => "<p>Hola {$contactName}, hay una actualización en tu ticket #{$ticketNumber}.</p>"
+            ];
+    }
+}
+
+/**
  * Enviar mensaje WhatsApp directo (DEPRECATED - usa webhook)
  */
 function sendWhatsAppMessage($pdo, $contactId, $contactPhone, $messageText) {
@@ -341,18 +760,18 @@ function sendWhatsAppTemplate($pdo, $contactPhone, $templateName, $variables = [
 }
 
 /**
- * Notificar ticket creado - Envía webhook
+ * Notificar ticket creado - Envía webhook + email
  */
 function notifyTicketCreatedWA($pdo, $ticketData) {
     try {
-        notifLog("=== INICIANDO notifyTicketCreatedWA (WEBHOOK) ===");
+        notifLog("=== INICIANDO notifyTicketCreatedWA (WEBHOOK + EMAIL) ===");
         
-        if (empty($ticketData['contact_phone'])) {
-            notifLog("Error: Sin teléfono en ticketData");
-            return ['success' => false, 'error' => 'Sin teléfono'];
+        if (empty($ticketData['contact_phone']) && empty($ticketData['contact_email'])) {
+            notifLog("Error: Sin teléfono ni email en ticketData");
+            return ['success' => false, 'error' => 'Sin contacto'];
         }
         
-        notifLog("Ticket: {$ticketData['ticket_number']} - Teléfono: {$ticketData['contact_phone']}");
+        notifLog("Ticket: {$ticketData['ticket_number']} - Tel: " . ($ticketData['contact_phone'] ?? 'N/A') . " - Email: " . ($ticketData['contact_email'] ?? 'N/A'));
         
         // Generar link de seguimiento
         $trackingLink = generateTrackingLink($ticketData['id'], $ticketData['ticket_number'], $pdo);
@@ -361,15 +780,25 @@ function notifyTicketCreatedWA($pdo, $ticketData) {
         // Agregar tracking link a los datos
         $ticketData['tracking_link'] = $trackingLink;
         
-        // Enviar webhook en lugar de WhatsApp directo
-        $result = sendTicketWebhook($pdo, $ticketData, 'ticket_created');
+        $results = ['trackingLink' => $trackingLink];
         
-        notifLog("FIN: notifyTicketCreatedWA - Result: " . json_encode($result));
+        // Enviar webhook (WhatsApp) si hay teléfono
+        if (!empty($ticketData['contact_phone'])) {
+            $results['webhook'] = sendTicketWebhook($pdo, $ticketData, 'ticket_created');
+        }
+        
+        // Enviar email si hay email
+        if (!empty($ticketData['contact_email'])) {
+            $results['email'] = sendEmailToContact($pdo, $ticketData, 'ticket_created');
+        }
+        
+        $success = (!empty($results['webhook']['success']) || !empty($results['email']['success']));
+        notifLog("FIN: notifyTicketCreatedWA - Success: " . ($success ? 'YES' : 'NO'));
         
         return [
-            'success' => $result['success'],
+            'success' => $success,
             'trackingLink' => $trackingLink,
-            'webhookResult' => $result
+            'results' => $results
         ];
     } catch (Exception $e) {
         notifLog("EXCEPCIÓN en notifyTicketCreatedWA: " . $e->getMessage() . " - Línea: " . $e->getLine());
@@ -378,49 +807,77 @@ function notifyTicketCreatedWA($pdo, $ticketData) {
 }
 
 /**
- * Notificar cuando información está pendiente - Envía webhook
+ * Notificar cuando información está pendiente - Envía webhook + email
  */
 function notifyPendingInfo($pdo, $ticketData) {
     $contactPhone = $ticketData['contact_phone'] ?? null;
+    $contactEmail = $ticketData['contact_email'] ?? null;
     $ticketNumber = $ticketData['ticket_number'] ?? 'UNKNOWN';
     
-    if (!$contactPhone) {
-        notifLog("notifyPendingInfo: No hay teléfono de contacto para ticket $ticketNumber");
-        return ['success' => false, 'error' => 'No contact phone'];
+    if (!$contactPhone && !$contactEmail) {
+        notifLog("notifyPendingInfo: No hay teléfono ni email de contacto para ticket $ticketNumber");
+        return ['success' => false, 'error' => 'No contact info'];
     }
     
-    notifLog("=== INICIANDO notifyPendingInfo (WEBHOOK) ===");
-    notifLog("Ticket: $ticketNumber - Teléfono: $contactPhone");
+    notifLog("=== INICIANDO notifyPendingInfo (WEBHOOK + EMAIL) ===");
+    notifLog("Ticket: $ticketNumber - Tel: " . ($contactPhone ?? 'N/A') . " - Email: " . ($contactEmail ?? 'N/A'));
     
-    // Enviar webhook en lugar de WhatsApp directo
-    $result = sendTicketWebhook($pdo, $ticketData, 'pending_info');
+    $results = [];
     
-    notifLog("FIN: notifyPendingInfo - Result: " . json_encode($result));
+    // Enviar webhook (WhatsApp) si hay teléfono
+    if ($contactPhone) {
+        $results['webhook'] = sendTicketWebhook($pdo, $ticketData, 'pending_info');
+    }
     
-    return $result;
+    // Enviar email si hay email
+    if ($contactEmail) {
+        $results['email'] = sendEmailToContact($pdo, $ticketData, 'pending_info');
+    }
+    
+    $success = (!empty($results['webhook']['success']) || !empty($results['email']['success']));
+    notifLog("FIN: notifyPendingInfo - Success: " . ($success ? 'YES' : 'NO'));
+    
+    return [
+        'success' => $success,
+        'results' => $results
+    ];
 }
 
 /**
- * Notificar cuando ticket está en proceso - Envía webhook
+ * Notificar cuando ticket está en proceso - Envía webhook + email
  */
 function notifyInProgress($pdo, $ticketData) {
     $contactPhone = $ticketData['contact_phone'] ?? null;
+    $contactEmail = $ticketData['contact_email'] ?? null;
     $ticketNumber = $ticketData['ticket_number'] ?? 'UNKNOWN';
     
-    if (!$contactPhone) {
-        notifLog("notifyInProgress: No hay teléfono de contacto para ticket $ticketNumber");
-        return ['success' => false, 'error' => 'No contact phone'];
+    if (!$contactPhone && !$contactEmail) {
+        notifLog("notifyInProgress: No hay teléfono ni email de contacto para ticket $ticketNumber");
+        return ['success' => false, 'error' => 'No contact info'];
     }
     
-    notifLog("=== INICIANDO notifyInProgress (WEBHOOK) ===");
-    notifLog("Ticket: $ticketNumber - Teléfono: $contactPhone");
+    notifLog("=== INICIANDO notifyInProgress (WEBHOOK + EMAIL) ===");
+    notifLog("Ticket: $ticketNumber - Tel: " . ($contactPhone ?? 'N/A') . " - Email: " . ($contactEmail ?? 'N/A'));
     
-    // Enviar webhook en lugar de WhatsApp directo
-    $result = sendTicketWebhook($pdo, $ticketData, 'in_progress');
+    $results = [];
     
-    notifLog("FIN: notifyInProgress - Result: " . json_encode($result));
+    // Enviar webhook (WhatsApp) si hay teléfono
+    if ($contactPhone) {
+        $results['webhook'] = sendTicketWebhook($pdo, $ticketData, 'in_progress');
+    }
     
-    return $result;
+    // Enviar email si hay email
+    if ($contactEmail) {
+        $results['email'] = sendEmailToContact($pdo, $ticketData, 'in_progress');
+    }
+    
+    $success = (!empty($results['webhook']['success']) || !empty($results['email']['success']));
+    notifLog("FIN: notifyInProgress - Success: " . ($success ? 'YES' : 'NO'));
+    
+    return [
+        'success' => $success,
+        'results' => $results
+    ];
 }
 
 /**
@@ -740,27 +1197,43 @@ function buildReviewEmailTemplate($ticketData, $user) {
 }
 
 /**
- * Notificar al cliente que el ticket fue aprobado - Envía webhook
+ * Notificar al cliente que el ticket fue aprobado - Envía webhook + email
  */
 function notifyTicketApproved($pdo, $ticketData) {
     notifLog("========================================");
-    notifLog("NOTIFICACION TICKET APROBADO (WEBHOOK)");
+    notifLog("NOTIFICACION TICKET APROBADO (WEBHOOK + EMAIL)");
     notifLog("Ticket: " . ($ticketData['ticket_number'] ?? 'N/A'));
     notifLog("Teléfono: " . ($ticketData['contact_phone'] ?? 'N/A'));
+    notifLog("Email: " . ($ticketData['contact_email'] ?? 'N/A'));
     notifLog("========================================");
     
     $phone = $ticketData['contact_phone'] ?? '';
-    if (empty($phone)) {
-        notifLog("ERROR: No hay teléfono de contacto");
-        return ['success' => false, 'error' => 'No hay teléfono'];
+    $email = $ticketData['contact_email'] ?? '';
+    
+    if (empty($phone) && empty($email)) {
+        notifLog("ERROR: No hay teléfono ni email de contacto");
+        return ['success' => false, 'error' => 'No contact info'];
     }
     
-    // Enviar webhook en lugar de WhatsApp directo
-    $result = sendTicketWebhook($pdo, $ticketData, 'ticket_approved');
+    $results = [];
     
-    notifLog("FIN: notifyTicketApproved - Result: " . json_encode($result));
+    // Enviar webhook (WhatsApp) si hay teléfono
+    if (!empty($phone)) {
+        $results['webhook'] = sendTicketWebhook($pdo, $ticketData, 'ticket_approved');
+    }
     
-    return $result;
+    // Enviar email si hay email
+    if (!empty($email)) {
+        $results['email'] = sendEmailToContact($pdo, $ticketData, 'ticket_approved');
+    }
+    
+    $success = (!empty($results['webhook']['success']) || !empty($results['email']['success']));
+    notifLog("FIN: notifyTicketApproved - Success: " . ($success ? 'YES' : 'NO'));
+    
+    return [
+        'success' => $success,
+        'results' => $results
+    ];
 }
 
 /**
