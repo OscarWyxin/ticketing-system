@@ -15,6 +15,12 @@ services:
       - DB_NAME=ticketing_system
       - DB_USER=ticketing_user
       - DB_PASS=${DB_PASSWORD:-TicketingSecure2026!}
+      # GoHighLevel API - REQUIRED
+      - GHL_API_KEY=${GHL_API_KEY}
+      - GHL_API_VERSION=${GHL_API_VERSION:-2021-07-28}
+      - GHL_COMPANY_ID=${GHL_COMPANY_ID}
+      - GHL_LOCATION_ID=${GHL_LOCATION_ID}
+      - GHL_API_BASE=${GHL_API_BASE:-https://services.leadconnectorhq.com}
     depends_on:
       db:
         condition: service_healthy

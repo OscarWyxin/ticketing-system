@@ -13,9 +13,18 @@ node_modules/
 *~
 .DS_Store
 
-# Environment
+# Environment - SENSITIVE DATA
 .env
 .env.local
+.env.production
+
+# Backup files with potential secrets
+*.bak
+*.bak2
+
+# Test files
+test-*.php
+test-*.html
 
 # Sistema
 Thumbs.db

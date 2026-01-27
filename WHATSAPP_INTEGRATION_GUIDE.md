@@ -178,12 +178,15 @@ Esperado: Muestra estado del ticket + historial
 
 ## ⚙️ Configuración
 
-Todas las configuraciones están en:
-- **api/ghl.php**:
-  - GHL_API_KEY = 'pit-2c52c956-5347-4a29-99a8-723a0e2d4afd'
-  - GHL_COMPANY_ID = 'Pv6up4LdwbGskR3X9qdH'
-  - GHL_LOCATION_ID = 'sBhcSc6UurgGMeTV10TC'
-  - GHL_API_BASE = 'https://services.leadconnectorhq.com'
+Todas las configuraciones usan **variables de entorno**:
+- **GHL_API_KEY** - Token de integración privada de GHL
+- **GHL_COMPANY_ID** - ID de la compañía en GHL
+- **GHL_LOCATION_ID** - ID de la ubicación/sub-cuenta
+- **GHL_API_BASE** - URL base de la API (default: https://services.leadconnectorhq.com)
+
+Configura estas variables en:
+- **Local**: archivo `.env` o en Laragon
+- **Docker**: en `docker-compose.yml` bajo `environment:`
 
 ## 📝 Notas Importantes
 

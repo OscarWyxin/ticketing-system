@@ -8,21 +8,21 @@
 // Incluir ghl.php una sola vez
 require_once __DIR__ . '/ghl.php';
 
-// Configuración GHL (si no están definidas)
+// Configuración GHL - usa variables de entorno (definidas en ghl.php)
 if (!defined('GHL_API_BASE')) {
-    define('GHL_API_BASE', 'https://services.leadconnectorhq.com');
+    define('GHL_API_BASE', getenv('GHL_API_BASE') ?: 'https://services.leadconnectorhq.com');
 }
 
 if (!defined('GHL_API_KEY')) {
-    define('GHL_API_KEY', 'pit-a1b15aff-7e5e-4066-adb9-c9eebab897ea');
+    define('GHL_API_KEY', getenv('GHL_API_KEY') ?: '');
 }
 
 if (!defined('GHL_API_VERSION')) {
-    define('GHL_API_VERSION', '2021-07-28');
+    define('GHL_API_VERSION', getenv('GHL_API_VERSION') ?: '2021-07-28');
 }
 
 if (!defined('GHL_LOCATION_ID')) {
-    define('GHL_LOCATION_ID', 'NYp3yidBIbmOdKtTKdgU');
+    define('GHL_LOCATION_ID', getenv('GHL_LOCATION_ID') ?: '');
 }
 
 // Log file path - relative path (works on any server)

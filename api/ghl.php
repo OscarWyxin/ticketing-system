@@ -4,15 +4,15 @@
  * Librería de funciones para sincronización y API calls
  */
 
-// Configuración GHL (si no está definida)
+// Configuración GHL - usa variables de entorno
 if (!defined("GHL_API_BASE")) {
     require_once __DIR__ . "/../config/database.php";
     setCorsHeaders();
-    define("GHL_API_BASE", "https://services.leadconnectorhq.com");
-    define("GHL_API_KEY", "pit-a1b15aff-7e5e-4066-adb9-c9eebab897ea");
-    define("GHL_API_VERSION", "2021-07-28");
-    define("GHL_COMPANY_ID", "Pv6up4LdwbGskR3X9qdH");
-    define("GHL_LOCATION_ID", "NYp3yidBIbmOdKtTKdgU");
+    define("GHL_API_BASE", getenv('GHL_API_BASE') ?: "https://services.leadconnectorhq.com");
+    define("GHL_API_KEY", getenv('GHL_API_KEY') ?: "");
+    define("GHL_API_VERSION", getenv('GHL_API_VERSION') ?: "2021-07-28");
+    define("GHL_COMPANY_ID", getenv('GHL_COMPANY_ID') ?: "");
+    define("GHL_LOCATION_ID", getenv('GHL_LOCATION_ID') ?: "");
 }
 
 /**
