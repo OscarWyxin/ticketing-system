@@ -72,9 +72,32 @@ switch ($action) {
     case 'delete':
         deleteTicket($pdo, $_GET['id'] ?? 0);
         break;
+    case 'delete-multiple':
+        deleteMultipleTickets($pdo);
+        break;
     case 'stats':
         getStats($pdo);
         break;
+    /**
+     * Eliminare più ticket tramite array di ID (POST)
+     */
+    function deleteMultipleTickets($pdo) {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!isset($input['ids']) || !is_array($input['ids']) || empty($input['ids'])) {
+            http_response_code(400);
+            echo json_encode(['error' => 'IDs non forniti o formato errato']);
+            return;
+        }
+        $ids = $input['ids'];
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $pdo->prepare("DELETE FROM tickets WHERE id IN ($placeholders)");
+        $stmt->execute($ids);
+        echo json_encode([
+            'success' => true,
+            'deleted' => $stmt->rowCount(),
+            'ids' => $ids
+        ]);
+    }
     case 'comments':
         handleComments($pdo, $_GET['ticket_id'] ?? 0);
         break;

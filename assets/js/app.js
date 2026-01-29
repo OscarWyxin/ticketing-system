@@ -1863,6 +1863,37 @@ async function rejectTicket(ticketId) {
     }
 }
 
+async function deleteTicket() {
+    if (!state.currentTicket) {
+        showToast('No hay ticket seleccionado', 'error');
+        return;
+    }
+    
+    const ticketNumber = state.currentTicket.ticket_number;
+    const confirmed = confirm(`¿Estás seguro de que quieres eliminar el ticket ${ticketNumber}?\n\nEsta acción no se puede deshacer.`);
+    
+    if (!confirmed) return;
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=delete&id=${state.currentTicket.id}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.success) {
+            showToast(`Ticket ${ticketNumber} eliminado`, 'success');
+            state.currentTicket = null;
+            showView('tickets');
+            loadTickets();
+            loadStats();
+        } else {
+            showToast(response.error || 'Error al eliminar ticket', 'error');
+        }
+    } catch (error) {
+        console.error('Error deleting ticket:', error);
+        showToast('Error de conexión', 'error');
+    }
+}
+
 function goToPage(page) {
     if (page < 1 || page > state.pagination.pages) return;
     state.pagination.page = page;
@@ -2419,6 +2450,7 @@ window.saveDeliverable = saveDeliverable;
 window.requestReview = requestReview;
 window.approveTicket = approveTicket;
 window.rejectTicket = rejectTicket;
+window.deleteTicket = deleteTicket;
 window.goToPage = goToPage;
 window.showView = showView;
 window.toggleView = toggleView;
