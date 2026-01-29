@@ -2251,7 +2251,9 @@ const AGENT_DATA = {
     10: { name: 'Oscar Calamita', id: 10 },
     7: { name: 'Fiorella Aguerre', id: 7 },
     8: { name: 'Jefferson Carvajal', id: 8 },
-    13: { name: 'Victoria Aparicio', id: 13 }
+    13: { name: 'Victoria Aparicio', id: 13 },
+    148: { name: 'Andrea Rasjido', id: 148 },
+    149: { name: 'Gabriela Carvajal', id: 149 }
 };
 
 async function loadAgentDashboard(agentId) {
@@ -2263,7 +2265,9 @@ async function loadAgentDashboard(agentId) {
         10: 'oscar',
         7: 'fiorella',
         8: 'jefferson',
-        13: 'victoria'
+        13: 'victoria',
+        148: 'andrea',
+        149: 'gabriela'
     };
     const agentShort = agentNameMap[agentId];
     const dashboard = document.getElementById(`agent-${agentShort}-dashboard`);
