@@ -731,7 +731,7 @@ function handleComments($pdo, $ticketId) {
             $input['author_name'] ?? null,
             $input['author_email'] ?? null,
             $input['content'],
-            $input['is_internal'] ?? false
+            !empty($input['is_internal']) ? 1 : 0
         ]);
         
         // Actualizar ticket
