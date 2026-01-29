@@ -1316,7 +1316,9 @@ function showView(view) {
             'agent-oscar': 10,
             'agent-fiorella': 7,
             'agent-jefferson': 8,
-            'agent-victoria': 13
+            'agent-victoria': 13,
+            'agent-andrea': 148,
+            'agent-gabriela': 149
         };
         const agentId = agentMap[view];
         if (agentId) {
