@@ -332,6 +332,19 @@ function createTicket($pdo) {
             $input = $_POST;
         }
         
+        // Si hay contact_user_id, obtener datos del usuario
+        if (!empty($input['contact_user_id'])) {
+            $userStmt = $pdo->prepare("SELECT name, email, phone FROM users WHERE id = ?");
+            $userStmt->execute([$input['contact_user_id']]);
+            $contactUser = $userStmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($contactUser) {
+                $input['contact_name'] = $contactUser['name'];
+                $input['contact_email'] = $contactUser['email'];
+                $input['contact_phone'] = $contactUser['phone'];
+            }
+        }
+        
         // Validaciones
         if (empty($input['title']) || empty($input['description'])) {
             http_response_code(400);
