@@ -844,6 +844,152 @@ function notifyPendingInfo($pdo, $ticketData) {
 }
 
 /**
+ * Notificar al agente asignado que la información está completa
+ * Se dispara cuando el ticket pasa de 'waiting' a 'in_progress'
+ */
+function notifyAgentInfoComplete($pdo, $ticketData) {
+    $ticketNumber = $ticketData['ticket_number'] ?? 'UNKNOWN';
+    $assignedTo = $ticketData['assigned_to'] ?? null;
+    
+    notifLog("=== INICIANDO notifyAgentInfoComplete ===");
+    notifLog("Ticket: $ticketNumber - Asignado a: " . ($assignedTo ?? 'N/A'));
+    
+    if (!$assignedTo) {
+        notifLog("notifyAgentInfoComplete: No hay usuario asignado para ticket $ticketNumber");
+        return ['success' => false, 'error' => 'No assigned user'];
+    }
+    
+    // Obtener datos del usuario asignado
+    $stmt = $pdo->prepare("SELECT id, name, email, phone FROM users WHERE id = ?");
+    $stmt->execute([$assignedTo]);
+    $agent = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$agent || empty($agent['email'])) {
+        notifLog("ERROR: Usuario $assignedTo no encontrado o sin email");
+        return ['success' => false, 'error' => 'Agent not found or no email'];
+    }
+    
+    notifLog("Agente: {$agent['name']} ({$agent['email']})");
+    
+    // Buscar o crear contacto en GHL
+    $contactId = findOrCreateContact($agent['email'], $agent['name']);
+    
+    if (!$contactId) {
+        notifLog("ERROR: No se pudo crear contacto GHL para el agente");
+        return ['success' => false, 'error' => 'Could not create GHL contact for agent'];
+    }
+    
+    // Construir email para el agente
+    $title = htmlspecialchars($ticketData['title'] ?? 'Sin título');
+    $contactName = htmlspecialchars($ticketData['contact_name'] ?? 'Cliente');
+    $priority = $ticketData['priority'] ?? 'medium';
+    
+    $priorityColors = [
+        'urgent' => '#dc3545',
+        'high' => '#fd7e14', 
+        'medium' => '#ffc107',
+        'low' => '#28a745'
+    ];
+    $priorityLabels = [
+        'urgent' => 'Urgente',
+        'high' => 'Alta',
+        'medium' => 'Media',
+        'low' => 'Baja'
+    ];
+    $priorityColor = $priorityColors[$priority] ?? '#ffc107';
+    $priorityLabel = $priorityLabels[$priority] ?? 'Media';
+    
+    $subject = "✅ Información Completa - Ticket #{$ticketNumber}";
+    $html = "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>✅</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>¡Información Completa!</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>El cliente ha proporcionado la información</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$agent['name']}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>El cliente <strong>{$contactName}</strong> ha proporcionado la información solicitada. El ticket está listo para continuar.</p>
+                            
+                            <!-- Ticket Info Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 12px; border: 1px solid #86efac;'>
+                                <tr>
+                                    <td style='padding: 25px;'>
+                                        <table role='presentation' width='100%' cellspacing='0' cellpadding='0'>
+                                            <tr>
+                                                <td style='padding-bottom: 15px;'>
+                                                    <span style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Número de Ticket</span>
+                                                    <div style='color: #16a34a; font-size: 24px; font-weight: 700; margin-top: 5px;'>#{$ticketNumber}</div>
+                                                </td>
+                                                <td style='padding-bottom: 15px; text-align: right;'>
+                                                    <span style='background-color: {$priorityColor}; color: #ffffff; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;'>{$priorityLabel}</span>
+                                                </td>
+                                            </tr>
+                                            <tr>
+                                                <td colspan='2' style='padding-top: 15px; border-top: 1px solid #86efac;'>
+                                                    <span style='color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;'>Asunto</span>
+                                                    <div style='color: #1f2937; font-size: 18px; font-weight: 600; margin-top: 5px;'>{$title}</div>
+                                                </td>
+                                            </tr>
+                                        </table>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style='margin: 30px 0 0; font-size: 14px; color: #9ca3af; text-align: center;'>Puedes continuar trabajando en este ticket.</p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Notificación Automática</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>";
+    
+    // Enviar email via GHL
+    $emailData = [
+        'type' => 'Email',
+        'contactId' => $contactId,
+        'subject' => $subject,
+        'html' => $html
+    ];
+    
+    $result = ghlApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
+    notifLog("Resultado email a agente: " . json_encode($result));
+    
+    $success = !isset($result['error']);
+    notifLog("FIN: notifyAgentInfoComplete - Success: " . ($success ? 'YES' : 'NO'));
+    
+    return [
+        'success' => $success,
+        'agentId' => $assignedTo,
+        'agentEmail' => $agent['email'],
+        'result' => $result
+    ];
+}
+
+/**
  * Notificar cuando ticket está en proceso - Envía webhook + email
  */
 function notifyInProgress($pdo, $ticketData) {

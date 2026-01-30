@@ -616,8 +616,14 @@ function updateTicket($pdo, $id) {
                 $ticketDataWithLink = $updatedTicket;
                 $ticketDataWithLink['link_seguimiento'] = generateTrackingLink($updatedTicket['id'], $updatedTicket['ticket_number'], $pdo);
 
+                // Notificar al contacto (cliente)
                 if (function_exists('notifyInProgress')) {
                     notifyInProgress($pdo, $ticketDataWithLink);
+                }
+                
+                // Si viene de 'waiting', notificar al agente que la info está completa
+                if ($current['status'] === 'waiting' && function_exists('notifyAgentInfoComplete')) {
+                    notifyAgentInfoComplete($pdo, $ticketDataWithLink);
                 }
             }
         } catch (Exception $e) {
