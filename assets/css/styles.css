@@ -1804,7 +1804,8 @@ textarea.form-control {
     margin-bottom: 8px;
 }
 
-.ticket-description {
+/* Solo para tarjetas en lista - NO aplicar al detail view */
+.ticket-card .ticket-description {
     font-size: 12px;
     color: var(--gray-600);
     line-height: 1.4;
@@ -2198,4 +2199,414 @@ textarea.form-control {
     border-radius: 4px;
     font-size: 12px;
     font-weight: 500;
+}
+
+/* =====================================================
+   GESTIÓN DE PROYECTOS
+   ===================================================== */
+
+/* Grid de proyectos */
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+}
+
+/* Card de proyecto */
+.project-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--gray-200);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.project-card:hover {
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+    border-color: var(--primary-light);
+}
+
+.project-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 15px;
+}
+
+.project-card-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--gray-800);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.project-card-title i {
+    color: var(--primary);
+}
+
+.project-status {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.project-status.active {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.project-status.inactive {
+    background: var(--gray-100);
+    color: var(--gray-500);
+}
+
+.project-card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 15px;
+    font-size: 13px;
+    color: var(--gray-500);
+}
+
+.project-card-meta i {
+    margin-right: 5px;
+    width: 14px;
+}
+
+.project-progress {
+    margin-top: 10px;
+}
+
+.progress-bar-container {
+    height: 8px;
+    background: var(--gray-200);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary) 0%, var(--primary-light) 100%);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: var(--gray-500);
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Vista detalle de proyecto */
+.project-overview {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 30px;
+}
+
+.project-info h2 {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    color: var(--gray-800);
+}
+
+.project-info p {
+    color: var(--gray-600);
+    margin-bottom: 15px;
+}
+
+.project-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.project-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.project-detail-item .label {
+    font-size: 12px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+}
+
+.project-detail-item .value {
+    font-weight: 500;
+    color: var(--gray-800);
+}
+
+.project-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 15px;
+}
+
+.project-stat {
+    background: var(--gray-50);
+    padding: 15px;
+    border-radius: var(--radius);
+    text-align: center;
+}
+
+.project-stat .number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary);
+}
+
+.project-stat .label {
+    font-size: 12px;
+    color: var(--gray-500);
+    text-transform: uppercase;
+}
+
+/* Roadmap */
+.roadmap-container {
+    position: relative;
+}
+
+.roadmap-phase {
+    background: white;
+    border-radius: var(--radius-lg);
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    border: 1px solid var(--gray-200);
+}
+
+.phase-header {
+    padding: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--gray-50);
+    border-bottom: 1px solid var(--gray-200);
+    cursor: pointer;
+}
+
+.phase-header:hover {
+    background: var(--gray-100);
+}
+
+.phase-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-weight: 600;
+    color: var(--gray-800);
+}
+
+.phase-title i {
+    color: var(--primary);
+}
+
+.phase-status {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.phase-status.pending {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+.phase-status.in_progress {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.phase-status.completed {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.phase-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.phase-content {
+    padding: 0;
+}
+
+.phase-content.collapsed {
+    display: none;
+}
+
+/* Actividades */
+.activities-list {
+    padding: 15px;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 15px;
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    transition: var(--transition);
+}
+
+.activity-item:hover {
+    background: white;
+    border-color: var(--primary-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.activity-item:last-child {
+    margin-bottom: 0;
+}
+
+.activity-checkbox {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid var(--gray-300);
+    margin-right: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--transition);
+    flex-shrink: 0;
+}
+
+.activity-checkbox:hover {
+    border-color: var(--primary);
+}
+
+.activity-checkbox.completed {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+}
+
+.activity-checkbox.converted {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: white;
+}
+
+.activity-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-title {
+    font-weight: 500;
+    color: var(--gray-800);
+    margin-bottom: 4px;
+}
+
+.activity-title.completed {
+    text-decoration: line-through;
+    color: var(--gray-400);
+}
+
+.activity-meta {
+    font-size: 12px;
+    color: var(--gray-500);
+    display: flex;
+    gap: 15px;
+}
+
+.activity-actions {
+    display: flex;
+    gap: 8px;
+    opacity: 0;
+    transition: var(--transition);
+}
+
+.activity-item:hover .activity-actions {
+    opacity: 1;
+}
+
+.activity-converted {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 10px;
+    background: var(--primary-bg);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--primary);
+}
+
+/* Empty state */
+.phase-empty {
+    padding: 30px;
+    text-align: center;
+    color: var(--gray-400);
+}
+
+.phase-empty i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    display: block;
+}
+
+/* Add activity button */
+.add-activity-btn {
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed var(--gray-300);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--gray-500);
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.add-activity-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-bg);
+}
+
+/* Connector line between phases */
+.roadmap-connector {
+    width: 2px;
+    height: 20px;
+    background: var(--gray-300);
+    margin: 0 auto;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .projects-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .project-overview {
+        grid-template-columns: 1fr;
+    }
+    
+    .project-stats {
+        grid-template-columns: repeat(4, 1fr);
+    }
 }
