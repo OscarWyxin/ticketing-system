@@ -1053,8 +1053,30 @@ function renderTicketDetail() {
             
             <div class="ticket-description">
                 <h3>Descripción</h3>
-                <div class="content">${escapeHtml(ticket.description)}</div>
+                <div class="content" style="white-space: pre-wrap;">${escapeHtml(ticket.description)}</div>
             </div>
+            
+            ${ticket.briefing_url || ticket.video_url ? `
+            <div class="ticket-links" style="margin-top: 20px; padding: 15px; background: var(--gray-50); border-radius: var(--radius); border-left: 4px solid var(--primary);">
+                <h4 style="margin-bottom: 12px; color: var(--gray-700);"><i class="fas fa-link"></i> Enlaces</h4>
+                ${ticket.briefing_url ? `
+                <div style="margin-bottom: 8px;">
+                    <span style="color: var(--gray-500); font-size: 0.85rem;">Briefing:</span>
+                    <a href="${escapeHtml(ticket.briefing_url)}" target="_blank" style="color: var(--primary); margin-left: 8px;">
+                        <i class="fas fa-external-link-alt"></i> ${escapeHtml(ticket.briefing_url.length > 50 ? ticket.briefing_url.substring(0, 50) + '...' : ticket.briefing_url)}
+                    </a>
+                </div>
+                ` : ''}
+                ${ticket.video_url ? `
+                <div>
+                    <span style="color: var(--gray-500); font-size: 0.85rem;">Video:</span>
+                    <a href="${escapeHtml(ticket.video_url)}" target="_blank" style="color: var(--primary); margin-left: 8px;">
+                        <i class="fas fa-video"></i> ${escapeHtml(ticket.video_url.length > 50 ? ticket.video_url.substring(0, 50) + '...' : ticket.video_url)}
+                    </a>
+                </div>
+                ` : ''}
+            </div>
+            ` : ''}
             
             <div class="ticket-comments">
                 <div class="comments-header">
@@ -1298,6 +1320,10 @@ function showView(view) {
     if (view === 'dashboard') {
         loadStats();
         loadTickets();
+    } else if (view === 'projects') {
+        loadProjects();
+    } else if (view === 'project-detail') {
+        // Se carga desde loadProjectDetail
     } else if (view === 'tickets') {
         state.filters = { status: '', priority: '', category: '', search: '' };
         loadTickets();
@@ -2467,3 +2493,627 @@ window.switchBacklogTab = switchBacklogTab;
 window.loadBacklogStats = loadBacklogStats;
 window.loadBacklogHistory = loadBacklogHistory;
 window.loadBacklogPendingReview = loadBacklogPendingReview;
+
+// =====================================================
+// GESTIÓN DE PROYECTOS
+// =====================================================
+
+const PROJECTS_API = 'api/projects.php';
+let currentProject = null;
+
+async function loadProjects() {
+    const container = document.getElementById('projects-list');
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading">Cargando proyectos...</div>';
+    
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=list`);
+        
+        if (response.success && response.projects) {
+            renderProjects(response.projects);
+            populateResponsibleFilter(response.projects);
+        } else {
+            container.innerHTML = '<p>Error al cargar proyectos</p>';
+        }
+    } catch (error) {
+        console.error('Error loading projects:', error);
+        container.innerHTML = '<p>Error de conexión</p>';
+    }
+}
+
+function renderProjects(projects) {
+    const container = document.getElementById('projects-list');
+    
+    if (!projects || projects.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="grid-column: 1 / -1; text-align: center; padding: 60px;">
+                <i class="fas fa-folder-open" style="font-size: 4rem; color: var(--gray-300); margin-bottom: 20px;"></i>
+                <h3 style="color: var(--gray-500);">No hay proyectos</h3>
+                <p style="color: var(--gray-400);">Crea tu primer proyecto para comenzar</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = projects.map(project => `
+        <div class="project-card" onclick="loadProjectDetail(${project.id})">
+            <div class="project-card-header">
+                <div class="project-card-title">
+                    <i class="fas fa-folder"></i>
+                    ${escapeHtml(project.name)}
+                </div>
+                <span class="project-status ${project.status}">${project.status === 'active' ? 'Activo' : 'Inactivo'}</span>
+            </div>
+            <div class="project-card-meta">
+                ${project.responsible_name ? `<span><i class="fas fa-user"></i> ${escapeHtml(project.responsible_name)}</span>` : ''}
+                ${project.client_name ? `<span><i class="fas fa-building"></i> ${escapeHtml(project.client_name)}</span>` : ''}
+                <span><i class="fas fa-layer-group"></i> ${project.phase_count || 0} fases</span>
+                <span><i class="fas fa-tasks"></i> ${project.activity_count || 0} actividades</span>
+            </div>
+            <div class="project-progress">
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: ${project.progress}%"></div>
+                </div>
+                <div class="progress-text">
+                    <span>${project.progress}% completado</span>
+                    <span>${project.completed_activities || 0}/${project.activity_count || 0} actividades</span>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function populateResponsibleFilter(projects) {
+    const filter = document.getElementById('projects-filter-responsible');
+    if (!filter) return;
+    
+    const responsibles = [...new Set(projects.filter(p => p.responsible_name).map(p => JSON.stringify({id: p.responsible_id, name: p.responsible_name})))];
+    
+    filter.innerHTML = '<option value="">Todos los responsables</option>' +
+        responsibles.map(r => {
+            const resp = JSON.parse(r);
+            return `<option value="${resp.id}">${escapeHtml(resp.name)}</option>`;
+        }).join('');
+}
+
+function filterProjects() {
+    const search = document.getElementById('projects-search')?.value.toLowerCase() || '';
+    const responsible = document.getElementById('projects-filter-responsible')?.value || '';
+    
+    document.querySelectorAll('.project-card').forEach(card => {
+        const title = card.querySelector('.project-card-title')?.textContent.toLowerCase() || '';
+        const meta = card.querySelector('.project-card-meta')?.textContent.toLowerCase() || '';
+        
+        const matchesSearch = !search || title.includes(search) || meta.includes(search);
+        const matchesResponsible = !responsible || card.dataset.responsible === responsible;
+        
+        card.style.display = matchesSearch && matchesResponsible ? '' : 'none';
+    });
+}
+
+async function loadProjectDetail(projectId) {
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=get&id=${projectId}`);
+        
+        if (response.success && response.project) {
+            currentProject = response.project;
+            renderProjectDetail(response.project);
+            showView('project-detail');
+        } else {
+            showToast(response.error || 'Error al cargar proyecto', 'error');
+        }
+    } catch (error) {
+        console.error('Error loading project detail:', error);
+        showToast('Error de conexión', 'error');
+    }
+}
+
+function renderProjectDetail(project) {
+    // Título
+    document.getElementById('project-detail-title').innerHTML = 
+        `<i class="fas fa-folder-open"></i> ${escapeHtml(project.name)}`;
+    
+    // Overview
+    const overview = document.getElementById('project-overview');
+    overview.innerHTML = `
+        <div class="project-info">
+            <h2>${escapeHtml(project.name)}</h2>
+            ${project.description ? `<p>${escapeHtml(project.description)}</p>` : ''}
+            <div class="project-details">
+                <div class="project-detail-item">
+                    <span class="label">Responsable</span>
+                    <span class="value">${project.responsible_name || 'Sin asignar'}</span>
+                </div>
+                <div class="project-detail-item">
+                    <span class="label">Cliente</span>
+                    <span class="value">${project.client_name || 'Sin cliente'}</span>
+                </div>
+                ${project.start_date ? `
+                <div class="project-detail-item">
+                    <span class="label">Inicio</span>
+                    <span class="value">${formatDate(project.start_date)}</span>
+                </div>
+                ` : ''}
+                ${project.end_date ? `
+                <div class="project-detail-item">
+                    <span class="label">Fin</span>
+                    <span class="value">${formatDate(project.end_date)}</span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        <div class="project-stats">
+            <div class="project-stat">
+                <div class="number">${project.stats?.total_phases || 0}</div>
+                <div class="label">Fases</div>
+            </div>
+            <div class="project-stat">
+                <div class="number">${project.stats?.total_activities || 0}</div>
+                <div class="label">Actividades</div>
+            </div>
+            <div class="project-stat">
+                <div class="number">${project.stats?.completed_activities || 0}</div>
+                <div class="label">Completadas</div>
+            </div>
+            <div class="project-stat">
+                <div class="number">${project.stats?.progress || 0}%</div>
+                <div class="label">Progreso</div>
+            </div>
+        </div>
+    `;
+    
+    // Roadmap
+    renderRoadmap(project.phases || []);
+}
+
+function renderRoadmap(phases) {
+    const container = document.getElementById('roadmap-container');
+    
+    if (!phases || phases.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="text-align: center; padding: 60px; background: white; border-radius: var(--radius-lg);">
+                <i class="fas fa-road" style="font-size: 4rem; color: var(--gray-300); margin-bottom: 20px;"></i>
+                <h3 style="color: var(--gray-500);">Sin roadmap</h3>
+                <p style="color: var(--gray-400);">Crea la primera fase para comenzar el roadmap</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = phases.map((phase, index) => `
+        <div class="roadmap-phase" data-phase-id="${phase.id}">
+            <div class="phase-header" onclick="togglePhase(${phase.id})">
+                <div class="phase-title">
+                    <i class="fas fa-chevron-down" id="phase-chevron-${phase.id}"></i>
+                    <i class="fas fa-layer-group"></i>
+                    <span>${escapeHtml(phase.name)}</span>
+                    <span style="color: var(--gray-400); font-weight: normal; font-size: 0.85rem;">
+                        (${phase.activities?.length || 0} actividades)
+                    </span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span class="phase-status ${phase.status}">${getPhaseStatusLabel(phase.status)}</span>
+                    <div class="phase-actions" onclick="event.stopPropagation()">
+                        <button class="btn btn-sm btn-ghost" onclick="editPhase(${phase.id})" title="Editar">
+                            <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-sm btn-ghost" onclick="deletePhase(${phase.id})" title="Eliminar">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="phase-content" id="phase-content-${phase.id}">
+                <div class="activities-list">
+                    ${renderActivities(phase.activities || [], phase.id)}
+                    <button class="add-activity-btn" onclick="openNewActivityModal(${phase.id})">
+                        <i class="fas fa-plus"></i> Agregar actividad
+                    </button>
+                </div>
+            </div>
+        </div>
+        ${index < phases.length - 1 ? '<div class="roadmap-connector"></div>' : ''}
+    `).join('');
+}
+
+function renderActivities(activities, phaseId) {
+    if (!activities || activities.length === 0) {
+        return `
+            <div class="phase-empty">
+                <i class="fas fa-inbox"></i>
+                <p>Sin actividades en esta fase</p>
+            </div>
+        `;
+    }
+    
+    return activities.map(activity => `
+        <div class="activity-item" data-activity-id="${activity.id}">
+            <div class="activity-checkbox ${activity.status}" 
+                 onclick="toggleActivityStatus(${activity.id}, '${activity.status}')"
+                 title="${activity.status === 'converted' ? 'Convertido a ticket' : 'Click para cambiar estado'}">
+                ${activity.status === 'completed' || activity.status === 'converted' ? '<i class="fas fa-check"></i>' : ''}
+            </div>
+            <div class="activity-info">
+                <div class="activity-title ${activity.status === 'completed' ? 'completed' : ''}">
+                    ${escapeHtml(activity.title)}
+                </div>
+                <div class="activity-meta">
+                    ${activity.assigned_name ? `<span><i class="fas fa-user"></i> ${escapeHtml(activity.assigned_name)}</span>` : ''}
+                    ${activity.contact_name ? `<span><i class="fas fa-phone"></i> ${escapeHtml(activity.contact_name)}</span>` : ''}
+                    ${activity.video_url ? `<span><i class="fas fa-video"></i> Con vídeo</span>` : ''}
+                </div>
+            </div>
+            ${activity.ticket_id ? `
+                <div class="activity-converted" onclick="loadTicketDetail(${activity.ticket_id}); showView('ticket-detail')">
+                    <i class="fas fa-ticket-alt"></i> ${activity.ticket_number || 'Ticket'}
+                </div>
+            ` : `
+                <div class="activity-actions">
+                    <button class="btn btn-sm btn-warning" onclick="convertActivityToTicket(${activity.id})" title="Bajar a Ticket">
+                        <i class="fas fa-arrow-down"></i>
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="editActivity(${activity.id})" title="Editar">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button class="btn btn-sm btn-ghost" onclick="deleteActivity(${activity.id})" title="Eliminar">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `}
+        </div>
+    `).join('');
+}
+
+function getPhaseStatusLabel(status) {
+    const labels = {
+        'pending': 'Pendiente',
+        'in_progress': 'En Progreso',
+        'completed': 'Completada'
+    };
+    return labels[status] || status;
+}
+
+function togglePhase(phaseId) {
+    const content = document.getElementById(`phase-content-${phaseId}`);
+    const chevron = document.getElementById(`phase-chevron-${phaseId}`);
+    
+    if (content) {
+        content.classList.toggle('collapsed');
+        if (chevron) {
+            chevron.classList.toggle('fa-chevron-down');
+            chevron.classList.toggle('fa-chevron-right');
+        }
+    }
+}
+
+// =====================================================
+// MODALES DE PROYECTOS
+// =====================================================
+
+function openNewProjectModal() {
+    document.getElementById('modal-project-title').innerHTML = '<i class="fas fa-folder-plus"></i> Nuevo Proyecto';
+    document.getElementById('form-project').reset();
+    document.getElementById('project-id').value = '';
+    
+    // Cargar opciones de responsables y clientes
+    populateProjectSelects();
+    
+    openModal('modal-project');
+}
+
+async function populateProjectSelects() {
+    // Cargar usuarios para responsable
+    const respSelect = document.getElementById('project-responsible');
+    if (respSelect && state.agents && state.agents.length > 0) {
+        respSelect.innerHTML = '<option value="">Sin asignar</option>' +
+            state.agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+    }
+    
+    // Cargar clientes
+    const clientSelect = document.getElementById('project-client');
+    if (clientSelect && state.clients && state.clients.length > 0) {
+        clientSelect.innerHTML = '<option value="">Sin cliente</option>' +
+            state.clients.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    }
+}
+
+function editCurrentProject() {
+    if (!currentProject) return;
+    
+    document.getElementById('modal-project-title').innerHTML = '<i class="fas fa-edit"></i> Editar Proyecto';
+    document.getElementById('project-id').value = currentProject.id;
+    document.getElementById('project-name').value = currentProject.name || '';
+    document.getElementById('project-description').value = currentProject.description || '';
+    document.getElementById('project-start-date').value = currentProject.start_date || '';
+    document.getElementById('project-end-date').value = currentProject.end_date || '';
+    
+    populateProjectSelects();
+    
+    setTimeout(() => {
+        document.getElementById('project-responsible').value = currentProject.responsible_id || '';
+        document.getElementById('project-client').value = currentProject.client_id || '';
+    }, 100);
+    
+    openModal('modal-project');
+}
+
+async function saveProject(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('form-project');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    const id = data.id;
+    delete data.id;
+    
+    try {
+        const action = id ? `update&id=${id}` : 'create';
+        const response = await apiCall(`${PROJECTS_API}?action=${action}`, {
+            method: id ? 'PUT' : 'POST',
+            body: JSON.stringify(data)
+        });
+        
+        if (response.success) {
+            showToast(id ? 'Proyecto actualizado' : 'Proyecto creado', 'success');
+            closeModal('modal-project');
+            
+            if (id && currentProject) {
+                loadProjectDetail(id);
+            } else {
+                loadProjects();
+            }
+        } else {
+            showToast(response.error || 'Error al guardar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// =====================================================
+// MODALES DE FASES
+// =====================================================
+
+function openNewPhaseModal() {
+    if (!currentProject) return;
+    
+    document.getElementById('modal-phase-title').innerHTML = '<i class="fas fa-layer-group"></i> Nueva Fase';
+    document.getElementById('form-phase').reset();
+    document.getElementById('phase-id').value = '';
+    document.getElementById('phase-project-id').value = currentProject.id;
+    
+    openModal('modal-phase');
+}
+
+function editPhase(phaseId) {
+    const phase = currentProject?.phases?.find(p => p.id === phaseId);
+    if (!phase) return;
+    
+    document.getElementById('modal-phase-title').innerHTML = '<i class="fas fa-edit"></i> Editar Fase';
+    document.getElementById('phase-id').value = phase.id;
+    document.getElementById('phase-project-id').value = currentProject.id;
+    document.getElementById('phase-name').value = phase.name || '';
+    document.getElementById('phase-description').value = phase.description || '';
+    document.getElementById('phase-start-date').value = phase.start_date || '';
+    document.getElementById('phase-end-date').value = phase.end_date || '';
+    
+    openModal('modal-phase');
+}
+
+async function savePhase(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('form-phase');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    const id = data.id;
+    delete data.id;
+    
+    try {
+        const action = id ? `update-phase&id=${id}` : 'create-phase';
+        const response = await apiCall(`${PROJECTS_API}?action=${action}`, {
+            method: id ? 'PUT' : 'POST',
+            body: JSON.stringify(data)
+        });
+        
+        if (response.success) {
+            showToast(id ? 'Fase actualizada' : 'Fase creada', 'success');
+            closeModal('modal-phase');
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al guardar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function deletePhase(phaseId) {
+    if (!confirm('¿Eliminar esta fase y todas sus actividades?')) return;
+    
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=delete-phase&id=${phaseId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.success) {
+            showToast('Fase eliminada', 'success');
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al eliminar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// =====================================================
+// MODALES DE ACTIVIDADES
+// =====================================================
+
+function openNewActivityModal(phaseId) {
+    document.getElementById('modal-activity-title').innerHTML = '<i class="fas fa-tasks"></i> Nueva Actividad';
+    document.getElementById('form-activity').reset();
+    document.getElementById('activity-id').value = '';
+    document.getElementById('activity-phase-id').value = phaseId;
+    
+    populateActivitySelects();
+    
+    openModal('modal-activity');
+}
+
+function populateActivitySelects() {
+    // Contactos
+    const contactSelect = document.getElementById('activity-contact');
+    if (contactSelect) {
+        contactSelect.innerHTML = `
+            <option value="">Sin contacto</option>
+            <option value="3">Alfonso Bello</option>
+            <option value="6">Alicia Urdiales</option>
+            <option value="150">Angel Aparicio</option>
+        `;
+    }
+    
+    // Asignados (agentes)
+    const assignedSelect = document.getElementById('activity-assigned');
+    if (assignedSelect && state.agents && state.agents.length > 0) {
+        assignedSelect.innerHTML = '<option value="">Sin asignar</option>' +
+            state.agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+    }
+}
+
+function editActivity(activityId) {
+    let activity = null;
+    for (const phase of (currentProject?.phases || [])) {
+        activity = phase.activities?.find(a => a.id === activityId);
+        if (activity) break;
+    }
+    if (!activity) return;
+    
+    document.getElementById('modal-activity-title').innerHTML = '<i class="fas fa-edit"></i> Editar Actividad';
+    document.getElementById('activity-id').value = activity.id;
+    document.getElementById('activity-phase-id').value = activity.phase_id;
+    document.getElementById('activity-title').value = activity.title || '';
+    document.getElementById('activity-description').value = activity.description || '';
+    document.getElementById('activity-notes').value = activity.notes || '';
+    document.getElementById('activity-video').value = activity.video_url || '';
+    
+    populateActivitySelects();
+    
+    setTimeout(() => {
+        document.getElementById('activity-contact').value = activity.contact_user_id || '';
+        document.getElementById('activity-assigned').value = activity.assigned_to || '';
+    }, 100);
+    
+    openModal('modal-activity');
+}
+
+async function saveActivity(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('form-activity');
+    const formData = new FormData(form);
+    const data = Object.fromEntries(formData.entries());
+    const id = data.id;
+    delete data.id;
+    
+    try {
+        const action = id ? `update-activity&id=${id}` : 'create-activity';
+        const response = await apiCall(`${PROJECTS_API}?action=${action}`, {
+            method: id ? 'PUT' : 'POST',
+            body: JSON.stringify(data)
+        });
+        
+        if (response.success) {
+            showToast(id ? 'Actividad actualizada' : 'Actividad creada', 'success');
+            closeModal('modal-activity');
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al guardar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function deleteActivity(activityId) {
+    if (!confirm('¿Eliminar esta actividad?')) return;
+    
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=delete-activity&id=${activityId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.success) {
+            showToast('Actividad eliminada', 'success');
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al eliminar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function toggleActivityStatus(activityId, currentStatus) {
+    if (currentStatus === 'converted') {
+        showToast('Esta actividad ya fue convertida a ticket', 'warning');
+        return;
+    }
+    
+    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=update-activity&id=${activityId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: newStatus })
+        });
+        
+        if (response.success) {
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+async function convertActivityToTicket(activityId) {
+    if (!confirm('¿Convertir esta actividad en un ticket?\n\nSe creará un ticket con todos los datos de la actividad.')) return;
+    
+    try {
+        const response = await apiCall(`${PROJECTS_API}?action=convert-to-ticket&id=${activityId}`, {
+            method: 'POST'
+        });
+        
+        if (response.success) {
+            showToast(`Ticket ${response.ticket_number} creado`, 'success');
+            loadProjectDetail(currentProject.id);
+        } else {
+            showToast(response.error || 'Error al convertir', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
+}
+
+// Exponer funciones globalmente
+window.loadProjects = loadProjects;
+window.loadProjectDetail = loadProjectDetail;
+window.filterProjects = filterProjects;
+window.openNewProjectModal = openNewProjectModal;
+window.editCurrentProject = editCurrentProject;
+window.saveProject = saveProject;
+window.openNewPhaseModal = openNewPhaseModal;
+window.editPhase = editPhase;
+window.savePhase = savePhase;
+window.deletePhase = deletePhase;
+window.togglePhase = togglePhase;
+window.openNewActivityModal = openNewActivityModal;
+window.editActivity = editActivity;
+window.saveActivity = saveActivity;
+window.deleteActivity = deleteActivity;
+window.toggleActivityStatus = toggleActivityStatus;
+window.convertActivityToTicket = convertActivityToTicket;

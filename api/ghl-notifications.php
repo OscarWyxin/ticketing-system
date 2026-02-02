@@ -43,25 +43,26 @@ function notifLog($message) {
  */
 function generateTrackingLink($ticketId, $ticketNumber, $pdo = null) {
     // Generar token
-    $token = hash('sha256', $ticketId . $ticketNumber . time());
+    $token = hash('sha256', $ticketId . $ticketNumber . time() . bin2hex(random_bytes(8)));
     
-    // Guardar token en BD
+    // Guardar token en BD con expiración de 90 días
     if ($pdo) {
         try {
             $stmt = $pdo->prepare("
-                INSERT INTO ticket_tracking_tokens (ticket_id, token, created_at) 
-                VALUES (?, ?, NOW())
-                ON DUPLICATE KEY UPDATE token = VALUES(token), created_at = NOW()
+                INSERT INTO ticket_tracking_tokens (ticket_id, ticket_number, token, created_at, expires_at) 
+                VALUES (?, ?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 90 DAY))
+                ON DUPLICATE KEY UPDATE token = VALUES(token), ticket_number = VALUES(ticket_number), created_at = NOW(), expires_at = DATE_ADD(NOW(), INTERVAL 90 DAY)
             ");
-            $stmt->execute([$ticketId, $token]);
+            $stmt->execute([$ticketId, $ticketNumber, $token]);
+            notifLog("Token guardado para ticket $ticketNumber: " . substr($token, 0, 20) . "...");
         } catch (Exception $e) {
             notifLog("Error guardando token: " . $e->getMessage());
         }
     }
     
-    // URL del cliente
-    $baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'];
-    return $baseUrl . '/ticket-tracking.php?id=' . $ticketNumber . '&token=' . substr($token, 0, 20);
+    // URL del cliente - usar dominio de producción si está disponible
+    $baseUrl = getenv('APP_URL') ?: ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http') . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
+    return $baseUrl . '/ticket-tracking.php?id=' . urlencode($ticketNumber) . '&token=' . substr($token, 0, 20);
 }
 
 /**
