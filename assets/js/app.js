@@ -1315,7 +1315,6 @@ function showView(view) {
         const agentMap = {
             'agent-oscar': 10,
             'agent-fiorella': 7,
-            'agent-jefferson': 8,
             'agent-victoria': 13,
             'agent-andrea': 148,
             'agent-gabriela': 149
@@ -2250,7 +2249,6 @@ async function confirmBacklogAssignment(ticketId, backlogType = 'consultoria') {
 const AGENT_DATA = {
     10: { name: 'Oscar Calamita', id: 10 },
     7: { name: 'Fiorella Aguerre', id: 7 },
-    8: { name: 'Jefferson Carvajal', id: 8 },
     13: { name: 'Victoria Aparicio', id: 13 },
     148: { name: 'Andrea Rasjido', id: 148 },
     149: { name: 'Gabriela Carvajal', id: 149 }
@@ -2264,7 +2262,6 @@ async function loadAgentDashboard(agentId) {
     const agentNameMap = {
         10: 'oscar',
         7: 'fiorella',
-        8: 'jefferson',
         13: 'victoria',
         148: 'andrea',
         149: 'gabriela'
