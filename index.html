@@ -24,6 +24,10 @@
                     <i class="fas fa-chart-pie"></i>
                     <span>Dashboard</span>
                 </a>
+                <a href="#" class="nav-item" data-view="projects">
+                    <i class="fas fa-folder-open"></i>
+                    <span>Proyectos</span>
+                </a>
                 <a href="#" class="nav-item" data-view="tickets">
                     <i class="fas fa-list"></i>
                     <span>Tickets</span>
@@ -44,23 +48,23 @@
                     <span>AGENTES</span>
                 </div>
 
-                <a href="#" class="nav-item" data-view="agent-oscar">
+                <a href="#" class="nav-item" data-agent-email="oscar.calamita@wixyn.com">
                     <i class="fas fa-user-circle"></i>
                     <span>Oscar Calamita</span>
                 </a>
-                <a href="#" class="nav-item" data-view="agent-fiorella">
+                <a href="#" class="nav-item" data-agent-email="faguerre@abelross.com">
                     <i class="fas fa-user-circle"></i>
                     <span>Fiorella Aguerre</span>
                 </a>
-                <a href="#" class="nav-item" data-view="agent-victoria">
+                <a href="#" class="nav-item" data-agent-email="victoria.aparicio@conmenospersonal.io">
                     <i class="fas fa-user-circle"></i>
                     <span>Victoria Aparicio</span>
                 </a>
-                <a href="#" class="nav-item" data-view="agent-andrea">
+                <a href="#" class="nav-item" data-agent-email="andrea@wixyn.com">
                     <i class="fas fa-user-circle"></i>
                     <span>Andrea Rasjido</span>
                 </a>
-                <a href="#" class="nav-item" data-view="agent-gabriela">
+                <a href="#" class="nav-item" data-agent-email="gabriela.carvajal@wixyn.com">
                     <i class="fas fa-user-circle"></i>
                     <span>Gabriela Carvajal</span>
                 </a>
@@ -644,6 +648,60 @@
                 </div>
             </section>
 
+            <!-- Projects List View -->
+            <section class="content-section hidden" id="view-projects">
+                <div class="section-header">
+                    <h1><i class="fas fa-folder-open"></i> Gestión de Proyectos</h1>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" onclick="openNewProjectModal()">
+                            <i class="fas fa-plus"></i> Nuevo Proyecto
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="projects-filters" style="margin-bottom: 20px; display: flex; gap: 15px; align-items: center;">
+                    <div class="search-box" style="flex: 1; max-width: 300px;">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="projects-search" placeholder="Buscar proyectos..." onkeyup="filterProjects()">
+                    </div>
+                    <select id="projects-filter-responsible" class="form-control" style="width: auto;" onchange="filterProjects()">
+                        <option value="">Todos los responsables</option>
+                    </select>
+                </div>
+                
+                <div class="projects-grid" id="projects-list">
+                    <!-- Lista de proyectos cargada dinámicamente -->
+                </div>
+            </section>
+
+            <!-- Project Detail View -->
+            <section class="content-section hidden" id="view-project-detail">
+                <div class="section-header">
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <button class="btn btn-ghost" onclick="showView('projects')">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h1 id="project-detail-title"><i class="fas fa-folder-open"></i> Proyecto</h1>
+                    </div>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" onclick="editCurrentProject()">
+                            <i class="fas fa-edit"></i> Editar
+                        </button>
+                        <button class="btn btn-primary" onclick="openNewPhaseModal()">
+                            <i class="fas fa-plus"></i> Nueva Fase
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="project-overview" id="project-overview">
+                    <!-- Info del proyecto -->
+                </div>
+                
+                <div class="roadmap-container" id="roadmap-container">
+                    <!-- Roadmap con fases y actividades -->
+                </div>
+            </section>
+
             <!-- Agent Oscar View -->
             <section class="content-section hidden" id="view-agent-oscar">
                 <div class="section-header">
@@ -873,6 +931,151 @@
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Crear Ticket
                     </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Nuevo/Editar Proyecto -->
+    <div class="modal-overlay" id="modal-project">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-project-title"><i class="fas fa-folder-plus"></i> Nuevo Proyecto</h3>
+                <button class="btn btn-ghost" onclick="closeModal('modal-project')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="form-project" onsubmit="saveProject(event)">
+                <input type="hidden" name="id" id="project-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Nombre del proyecto *</label>
+                        <input type="text" name="name" id="project-name" class="form-control" required placeholder="Ej: Prueba Clínica">
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción</label>
+                        <textarea name="description" id="project-description" class="form-control" rows="3" placeholder="Descripción del proyecto..."></textarea>
+                    </div>
+                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Responsable</label>
+                            <select name="responsible_id" id="project-responsible" class="form-control">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Cliente</label>
+                            <select name="client_id" id="project-client" class="form-control">
+                                <option value="">Sin cliente</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Fecha inicio</label>
+                            <input type="date" name="start_date" id="project-start-date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha fin</label>
+                            <input type="date" name="end_date" id="project-end-date" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-project')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Nueva/Editar Fase -->
+    <div class="modal-overlay" id="modal-phase">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-phase-title"><i class="fas fa-layer-group"></i> Nueva Fase</h3>
+                <button class="btn btn-ghost" onclick="closeModal('modal-phase')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="form-phase" onsubmit="savePhase(event)">
+                <input type="hidden" name="id" id="phase-id">
+                <input type="hidden" name="project_id" id="phase-project-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Nombre de la fase *</label>
+                        <input type="text" name="name" id="phase-name" class="form-control" required placeholder="Ej: Importación BBDD">
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción</label>
+                        <textarea name="description" id="phase-description" class="form-control" rows="2" placeholder="Descripción de la fase..."></textarea>
+                    </div>
+                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Fecha inicio</label>
+                            <input type="date" name="start_date" id="phase-start-date" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha fin</label>
+                            <input type="date" name="end_date" id="phase-end-date" class="form-control">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-phase')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Nueva/Editar Actividad -->
+    <div class="modal-overlay" id="modal-activity">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h3 id="modal-activity-title"><i class="fas fa-tasks"></i> Nueva Actividad</h3>
+                <button class="btn btn-ghost" onclick="closeModal('modal-activity')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <form id="form-activity" onsubmit="saveActivity(event)">
+                <input type="hidden" name="id" id="activity-id">
+                <input type="hidden" name="phase_id" id="activity-phase-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Asunto *</label>
+                        <input type="text" name="title" id="activity-title" class="form-control" required placeholder="Ej: Crear templates de email">
+                    </div>
+                    <div class="form-group">
+                        <label>Descripción</label>
+                        <textarea name="description" id="activity-description" class="form-control" rows="3" placeholder="Descripción detallada..."></textarea>
+                    </div>
+                    <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="form-group">
+                            <label>Quién lo solicita</label>
+                            <select name="contact_user_id" id="activity-contact" class="form-control">
+                                <option value="">Sin contacto</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Asignado a</label>
+                            <select name="assigned_to" id="activity-assigned" class="form-control">
+                                <option value="">Sin asignar</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Notas adicionales</label>
+                        <textarea name="notes" id="activity-notes" class="form-control" rows="2" placeholder="Notas internas..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>URL de vídeo (opcional)</label>
+                        <input type="url" name="video_url" id="activity-video" class="form-control" placeholder="https://...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-activity')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button>
                 </div>
             </form>
         </div>

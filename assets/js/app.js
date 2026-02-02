@@ -77,6 +77,17 @@ function setupEventListeners() {
     document.querySelectorAll('.nav-item').forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
+            
+            // Manejar pestañas de agentes por email
+            const agentEmail = item.dataset.agentEmail;
+            if (agentEmail) {
+                loadAgentDashboardByEmail(agentEmail);
+                // Marcar como activo
+                document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                return;
+            }
+            
             const view = item.dataset.view;
             showView(view);
         });
@@ -1331,19 +1342,6 @@ function showView(view) {
         loadBacklogTickets('consultoria');
     } else if (view === 'backlog-aib') {
         loadBacklogTickets('aib');
-    } else if (view.startsWith('agent-')) {
-        // Cargar dashboard del agente
-        const agentMap = {
-            'agent-oscar': 10,
-            'agent-fiorella': 7,
-            'agent-victoria': 13,
-            'agent-andrea': 148,
-            'agent-gabriela': 149
-        };
-        const agentId = agentMap[view];
-        if (agentId) {
-            loadAgentDashboard(agentId);
-        }
     } else if (view === 'open') {
         state.filters = { ...state.filters, status: 'open' };
         document.getElementById('filter-status').value = 'open';
@@ -2267,39 +2265,51 @@ async function confirmBacklogAssignment(ticketId, backlogType = 'consultoria') {
 // Agent Dashboard Functions
 // =====================================================
 
-const AGENT_DATA = {
-    10: { name: 'Oscar Calamita', id: 10 },
-    7: { name: 'Fiorella Aguerre', id: 7 },
-    13: { name: 'Victoria Aparicio', id: 13 },
-    148: { name: 'Andrea Rasjido', id: 148 },
-    149: { name: 'Gabriela Carvajal', id: 149 }
+// Mapeo de email a nombre corto para los elementos HTML
+const AGENT_EMAIL_TO_SHORT = {
+    'oscar.calamita@wixyn.com': 'oscar',
+    'faguerre@abelross.com': 'fiorella',
+    'victoria.aparicio@conmenospersonal.io': 'victoria',
+    'andrea@wixyn.com': 'andrea',
+    'gabriela.carvajal@wixyn.com': 'gabriela'
 };
 
-async function loadAgentDashboard(agentId) {
-    const agent = AGENT_DATA[agentId];
-    if (!agent) return;
+// Buscar agente por email en state.agents (cargado del API)
+function getAgentByEmail(email) {
+    return state.agents.find(a => a.email === email);
+}
 
-    // Mapear agentId a nombre corto para el ID del elemento
-    const agentNameMap = {
-        10: 'oscar',
-        7: 'fiorella',
-        13: 'victoria',
-        148: 'andrea',
-        149: 'gabriela'
-    };
-    const agentShort = agentNameMap[agentId];
+async function loadAgentDashboardByEmail(email) {
+    const agent = getAgentByEmail(email);
+    if (!agent) {
+        showToast('Agente no encontrado', 'error');
+        return;
+    }
+    
+    const agentShort = AGENT_EMAIL_TO_SHORT[email];
+    if (!agentShort) return;
+    
+    // Mostrar la sección correcta
+    document.querySelectorAll('.content-section').forEach(section => {
+        section.classList.add('hidden');
+    });
+    const viewSection = document.getElementById(`view-agent-${agentShort}`);
+    if (viewSection) {
+        viewSection.classList.remove('hidden');
+    }
+    
     const dashboard = document.getElementById(`agent-${agentShort}-dashboard`);
     if (!dashboard) return;
 
     dashboard.innerHTML = '<div class="loading">Cargando datos...</div>';
 
     try {
-        // Cargar estadísticas
-        const statsResponse = await fetch(`${HELPERS_API}?action=agent-stats&agent_id=${agentId}`);
+        // Cargar estadísticas usando el ID del agente
+        const statsResponse = await fetch(`${HELPERS_API}?action=agent-stats&agent_id=${agent.id}`);
         const statsData = await statsResponse.json();
 
         // Cargar tickets
-        const ticketsResponse = await fetch(`${HELPERS_API}?action=agent-tickets&agent_id=${agentId}`);
+        const ticketsResponse = await fetch(`${HELPERS_API}?action=agent-tickets&agent_id=${agent.id}`);
         const ticketsData = await ticketsResponse.json();
 
         if (statsData.success && ticketsData.success) {
