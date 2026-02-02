@@ -89,7 +89,9 @@ function setupEventListeners() {
             }
             
             const view = item.dataset.view;
-            showView(view);
+            if (view) {
+                showView(view);
+            }
         });
     });
 
