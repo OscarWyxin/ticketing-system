@@ -1098,7 +1098,7 @@ function renderTicketDetail() {
                         </button>
                     </div>
                     ` : ''}
-                    ${ticket.revision_status == 1 && (state.currentUser?.id == 3 || state.currentUser?.id == 14) ? `
+                    ${ticket.revision_status == 1 ? `
                     <div class="deliverable-actions review-actions">
                         <button class="btn btn-sm btn-success" onclick="approveTicket(${ticket.id})">
                             <i class="fas fa-check-circle"></i> Aprobar
@@ -1106,11 +1106,6 @@ function renderTicketDetail() {
                         <button class="btn btn-sm btn-danger" onclick="rejectTicket(${ticket.id})">
                             <i class="fas fa-times-circle"></i> Rechazar
                         </button>
-                    </div>
-                    ` : ''}
-                    ${ticket.revision_status == 1 && state.currentUser?.id != 3 && state.currentUser?.id != 14 ? `
-                    <div class="deliverable-info">
-                        <i class="fas fa-hourglass-half"></i> Esperando revisión de Alfonso o Alicia
                     </div>
                     ` : ''}
                 </div>
