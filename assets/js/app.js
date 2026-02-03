@@ -26,12 +26,14 @@ let state = {
     currentTicket: null,
     pagination: { page: 1, limit: 20, total: 0 },
     filters: {
-        status: '',
+        status: 'active',  // Por defecto mostrar solo activos
         priority: '',
         category: '',
         search: '',
         assigned: ''
     },
+    ticketStatusTab: 'active',  // Tab activo: active, resolved, all
+    agentStatusTab: 'active',   // Tab activo para dashboard de agente
     currentView: 'dashboard',
     timer: {
         running: false,
@@ -453,6 +455,12 @@ function renderStats() {
     
     // Actualizar badges de navegación inmediatamente
     updateBadges();
+    
+    // Actualizar tabs de tickets
+    updateTicketTabCounts();
+    
+    // Actualizar mini stats
+    updateTicketMiniStats();
 
     // Render priority stats
     const priorityStats = document.getElementById('priority-stats');
@@ -1372,7 +1380,15 @@ function showView(view) {
     } else if (view === 'project-detail') {
         // Se carga desde loadProjectDetail
     } else if (view === 'tickets') {
-        state.filters = { status: '', priority: '', category: '', search: '' };
+        // Mantener el tab actual o usar 'active' por defecto
+        const currentTab = state.ticketStatusTab || 'active';
+        state.filters = { ...state.filters, status: currentTab, priority: '', category: '', search: '' };
+        
+        // Actualizar UI del tab
+        document.querySelectorAll('.status-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.status === currentTab);
+        });
+        
         loadTickets();
     } else if (view === 'backlog-consultoria') {
         loadBacklogTickets('consultoria');
@@ -2017,6 +2033,68 @@ function updateBadges() {
     if (badgeOpen) badgeOpen.textContent = stats.open || 0;
 }
 
+function updateTicketTabCounts() {
+    const stats = state.stats;
+    const byStatus = stats.by_status || {};
+    
+    // Calcular counts
+    const activeCount = (parseInt(byStatus.open) || 0) + 
+                        (parseInt(byStatus.in_progress) || 0) + 
+                        (parseInt(byStatus.waiting) || 0);
+    const resolvedCount = (parseInt(byStatus.resolved) || 0) + 
+                          (parseInt(byStatus.closed) || 0);
+    const allCount = stats.total || 0;
+    
+    // Actualizar tabs
+    const tabActive = document.getElementById('tab-count-active');
+    const tabResolved = document.getElementById('tab-count-resolved');
+    const tabAll = document.getElementById('tab-count-all');
+    
+    if (tabActive) tabActive.textContent = activeCount;
+    if (tabResolved) tabResolved.textContent = resolvedCount;
+    if (tabAll) tabAll.textContent = allCount;
+}
+
+function updateTicketMiniStats() {
+    const stats = state.stats;
+    const byStatus = stats.by_status || {};
+    
+    const miniOpen = document.getElementById('mini-stat-open');
+    const miniProgress = document.getElementById('mini-stat-progress');
+    const miniWaiting = document.getElementById('mini-stat-waiting');
+    
+    if (miniOpen) miniOpen.textContent = byStatus.open || 0;
+    if (miniProgress) miniProgress.textContent = byStatus.in_progress || 0;
+    if (miniWaiting) miniWaiting.textContent = byStatus.waiting || 0;
+}
+
+function setTicketStatusTab(tab) {
+    state.ticketStatusTab = tab;
+    state.filters.status = tab;
+    state.pagination.page = 1;
+    
+    // Actualizar UI de tabs
+    document.querySelectorAll('.status-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.status === tab);
+    });
+    
+    // Actualizar input hidden
+    const filterStatus = document.getElementById('filter-status');
+    if (filterStatus) filterStatus.value = tab;
+    
+    // Mostrar/ocultar mini stats según tab
+    const miniStats = document.getElementById('tickets-mini-stats');
+    if (miniStats) {
+        miniStats.style.display = tab === 'active' ? 'flex' : 'none';
+    }
+    
+    // Recargar tickets
+    loadTickets();
+}
+
+// Exponer función globalmente
+window.setTicketStatusTab = setTicketStatusTab;
+
 function updateBacklogBadge(count, type = 'consultoria') {
     const badgeId = type === 'aib' ? 'badge-backlog-aib' : 'badge-backlog-consultoria';
     const badge = document.getElementById(badgeId);
@@ -2343,13 +2421,16 @@ async function loadAgentDashboardByEmail(email) {
 
     dashboard.innerHTML = '<div class="loading">Cargando datos...</div>';
 
+    // Obtener filtro de estado actual
+    const statusFilter = state.agentStatusTab || 'active';
+
     try {
         // Cargar estadísticas usando el ID del agente
         const statsResponse = await fetch(`${HELPERS_API}?action=agent-stats&agent_id=${agent.id}`);
         const statsData = await statsResponse.json();
 
-        // Cargar tickets
-        const ticketsResponse = await fetch(`${HELPERS_API}?action=agent-tickets&agent_id=${agent.id}`);
+        // Cargar tickets CON filtro de estado
+        const ticketsResponse = await fetch(`${HELPERS_API}?action=agent-tickets&agent_id=${agent.id}&status=${statusFilter}`);
         const ticketsData = await ticketsResponse.json();
 
         if (statsData.success && ticketsData.success) {
@@ -2470,6 +2551,21 @@ function renderAgentDashboard(agent, stats, tickets) {
                 <h3><i class="fas fa-tasks"></i> Tickets Asignados</h3>
             </div>
             <div class="card-body">
+                <!-- Tabs de estado para agente -->
+                <div class="agent-status-tabs">
+                    <button class="agent-tab ${state.agentStatusTab === 'active' ? 'active' : ''}" onclick="filterAgentTickets('active', '${agent.email}')">
+                        <span>Activos</span>
+                        <span class="tab-badge">${stats.open || 0}</span>
+                    </button>
+                    <button class="agent-tab ${state.agentStatusTab === 'resolved' ? 'active' : ''}" onclick="filterAgentTickets('resolved', '${agent.email}')">
+                        <span>Resueltos</span>
+                        <span class="tab-badge">${stats.resolved || 0}</span>
+                    </button>
+                    <button class="agent-tab ${state.agentStatusTab === 'all' ? 'active' : ''}" onclick="filterAgentTickets('all', '${agent.email}')">
+                        <span>Todos</span>
+                        <span class="tab-badge">${stats.total || 0}</span>
+                    </button>
+                </div>
                 <div class="agent-tickets-table">
                     <table class="tickets-table">
                         <thead>
@@ -3184,3 +3280,21 @@ window.saveActivity = saveActivity;
 window.deleteActivity = deleteActivity;
 window.toggleActivityStatus = toggleActivityStatus;
 window.convertActivityToTicket = convertActivityToTicket;
+
+// =====================================================
+// Filtro de Tickets por Estado para Agentes
+// =====================================================
+
+async function filterAgentTickets(tab, agentEmail) {
+    state.agentStatusTab = tab;
+    
+    // Actualizar estado visual de tabs
+    document.querySelectorAll('.agent-tab').forEach(t => t.classList.remove('active'));
+    const clickedTab = document.querySelector(`.agent-tab[onclick*="'${tab}'"]`);
+    if (clickedTab) clickedTab.classList.add('active');
+    
+    // Recargar el dashboard del agente con el nuevo filtro
+    await loadAgentDashboardByEmail(agentEmail);
+}
+
+window.filterAgentTickets = filterAgentTickets;

@@ -32,7 +32,7 @@ switch ($action) {
         getAgentStats($pdo, $_GET['agent_id'] ?? null);
         break;
     case 'agent-tickets':
-        getAgentTickets($pdo, $_GET['agent_id'] ?? null);
+        getAgentTickets($pdo, $_GET['agent_id'] ?? null, $_GET['status'] ?? null);
         break;
     case 'backlog-stats':
         getBacklogStats($pdo, $_GET['type'] ?? 'consultoria');
@@ -122,10 +122,18 @@ function getAgentStats($pdo, $agentId) {
     echo json_encode(['success' => true, 'data' => $stats]);
 }
 
-function getAgentTickets($pdo, $agentId) {
+function getAgentTickets($pdo, $agentId, $statusFilter = null) {
     if (!$agentId) {
         echo json_encode(['error' => 'Agent ID required']);
         return;
+    }
+
+    // Build status filter
+    $statusCondition = '';
+    if ($statusFilter === 'active') {
+        $statusCondition = " AND t.status IN ('open', 'in_progress', 'waiting')";
+    } elseif ($statusFilter === 'resolved') {
+        $statusCondition = " AND t.status IN ('resolved', 'closed')";
     }
 
     $stmt = $pdo->prepare("
@@ -145,7 +153,7 @@ function getAgentTickets($pdo, $agentId) {
         FROM tickets t
         LEFT JOIN categories c ON t.category_id = c.id
         LEFT JOIN accounts a ON t.client_id = a.id
-        WHERE t.assigned_to = ?
+        WHERE t.assigned_to = ? $statusCondition
         ORDER BY 
             CASE 
                 WHEN t.status = 'open' THEN 1

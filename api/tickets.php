@@ -132,10 +132,20 @@ function listTickets($pdo) {
     // Excluir tickets en backlog de la lista principal
     $where[] = "(t.backlog = FALSE OR t.backlog IS NULL)";
     
-    if ($status) {
+    // Manejar filtros de estado especiales
+    if ($status === 'active') {
+        // Solo tickets activos (no resueltos ni cerrados)
+        $where[] = "t.status IN ('open', 'in_progress', 'waiting')";
+    } else if ($status === 'resolved') {
+        // Solo resueltos y cerrados
+        $where[] = "t.status IN ('resolved', 'closed')";
+    } else if ($status && $status !== 'all') {
+        // Estado específico
         $where[] = "t.status = ?";
         $params[] = $status;
     }
+    // Si $status es 'all' o vacío, no se aplica filtro de estado
+    
     if ($priority) {
         $where[] = "t.priority = ?";
         $params[] = $priority;

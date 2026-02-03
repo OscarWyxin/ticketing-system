@@ -229,20 +229,34 @@
                     </div>
                 </div>
 
+                <!-- Tabs de Estado -->
+                <div class="tickets-status-tabs">
+                    <button class="status-tab active" data-status="active" onclick="setTicketStatusTab('active')">
+                        <span class="tab-label">Activos</span>
+                        <span class="tab-count" id="tab-count-active">0</span>
+                    </button>
+                    <button class="status-tab" data-status="resolved" onclick="setTicketStatusTab('resolved')">
+                        <span class="tab-label">Resueltos</span>
+                        <span class="tab-count" id="tab-count-resolved">0</span>
+                    </button>
+                    <button class="status-tab" data-status="all" onclick="setTicketStatusTab('all')">
+                        <span class="tab-label">Todos</span>
+                        <span class="tab-count" id="tab-count-all">0</span>
+                    </button>
+                </div>
+
+                <!-- Mini Stats -->
+                <div class="tickets-mini-stats" id="tickets-mini-stats">
+                    <span class="mini-stat open"><i class="fas fa-circle"></i> <span id="mini-stat-open">0</span> Abiertos</span>
+                    <span class="mini-stat in-progress"><i class="fas fa-circle"></i> <span id="mini-stat-progress">0</span> En curso</span>
+                    <span class="mini-stat waiting"><i class="fas fa-circle"></i> <span id="mini-stat-waiting">0</span> Esperando</span>
+                </div>
+
                 <!-- Filtros Avanzados -->
                 <div class="filters-panel">
                     <div class="filters-row">
-                        <div class="filter-group">
-                            <label>Estado</label>
-                            <select id="filter-status" class="form-select">
-                                <option value="">Todos los estados</option>
-                                <option value="open">Abierto</option>
-                                <option value="in_progress">En Progreso</option>
-                                <option value="waiting">En Espera</option>
-                                <option value="resolved">Resuelto</option>
-                                <option value="closed">Cerrado</option>
-                            </select>
-                        </div>
+                        <!-- Estado controlado por tabs -->
+                        <input type="hidden" id="filter-status" value="active">
                         
                         <div class="filter-group">
                             <label>Tipo</label>
