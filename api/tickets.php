@@ -673,36 +673,43 @@ function deleteTicket($pdo, $id) {
 }
 
 /**
- * Obtener estadÃ­sticas
+ * Obtener estadísticas
  */
 function getStats($pdo) {
     $stats = [];
     
-    // Por estado
-    $stmt = $pdo->query("SELECT status, COUNT(*) as count FROM tickets GROUP BY status");
+    // Filtro base: excluir backlog para consistencia con la lista
+    $baseFilter = "WHERE (backlog = FALSE OR backlog IS NULL)";
+    
+    // Por estado (solo tickets no-backlog)
+    $stmt = $pdo->query("SELECT status, COUNT(*) as count FROM tickets $baseFilter GROUP BY status");
     $stats['by_status'] = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
-    // Por prioridad
-    $stmt = $pdo->query("SELECT priority, COUNT(*) as count FROM tickets GROUP BY priority");
+    // Por prioridad (solo tickets no-backlog)
+    $stmt = $pdo->query("SELECT priority, COUNT(*) as count FROM tickets $baseFilter GROUP BY priority");
     $stats['by_priority'] = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
-    // Totales
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets");
+    // Totales (solo tickets no-backlog)
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter");
     $stats['total'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE status IN ('open', 'in_progress', 'waiting')");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND status IN ('open', 'in_progress', 'waiting')");
     $stats['open'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
     $stats['last_7_days'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stats['last_30_days'] = (int)$stmt->fetchColumn();
     
-    // Por categorÃ­a
+    // Total en backlog (para referencia)
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE backlog = TRUE");
+    $stats['backlog_total'] = (int)$stmt->fetchColumn();
+    
+    // Por categoría (solo tickets no-backlog)
     $stmt = $pdo->query("SELECT c.name, COUNT(t.id) as count 
                          FROM categories c 
-                         LEFT JOIN tickets t ON c.id = t.category_id 
+                         LEFT JOIN tickets t ON c.id = t.category_id AND (t.backlog = FALSE OR t.backlog IS NULL)
                          GROUP BY c.id ORDER BY count DESC");
     $stats['by_category'] = $stmt->fetchAll();
     
