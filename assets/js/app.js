@@ -11,6 +11,7 @@ const API_BASE = './api';
 const TICKETS_API = `${API_BASE}/tickets.php`;
 const HELPERS_API = `${API_BASE}/helpers.php`;
 const GHL_API = `${API_BASE}/ghl.php`;
+const PROJECTS_API = `${API_BASE}/projects.php`;
 
 // Estado de la aplicación
 let state = {
@@ -2136,7 +2137,7 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function showToast(message, type = 'info') {
+function showToast(message, type = 'info', duration = 3000) {
     const container = document.getElementById('toast-container');
     if (!container) return;
 
@@ -2152,7 +2153,7 @@ function showToast(message, type = 'info') {
     setTimeout(() => {
         toast.style.animation = 'slideIn 0.3s ease reverse';
         setTimeout(() => toast.remove(), 300);
-    }, 3000);
+    }, duration);
 }
 
 // =====================================================
@@ -2475,7 +2476,7 @@ function renderAgentDashboard(agent, stats, tickets) {
     return html;
 }
 
-window.loadAgentDashboard = loadAgentDashboard;
+window.loadAgentDashboardByEmail = loadAgentDashboardByEmail;
 window.loadTicketDetail = loadTicketDetail;
 window.updateTicketField = updateTicketField;
 window.toggleInfoPending = toggleInfoPending;
@@ -2510,7 +2511,6 @@ window.loadBacklogPendingReview = loadBacklogPendingReview;
 // GESTIÓN DE PROYECTOS
 // =====================================================
 
-const PROJECTS_API = 'api/projects.php';
 let currentProject = null;
 
 async function loadProjects() {
@@ -2653,6 +2653,15 @@ function renderProjectDetail(project) {
                     <span class="value">${formatDate(project.end_date)}</span>
                 </div>
                 ` : ''}
+                <div class="project-detail-item">
+                    <span class="label">Formulario</span>
+                    <span class="value">
+                        <a href="forms/form-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.html" 
+                           target="_blank" style="color: var(--primary); text-decoration: none;">
+                            <i class="fas fa-external-link-alt"></i> Abrir formulario
+                        </a>
+                    </span>
+                </div>
             </div>
         </div>
         <div class="project-stats">
@@ -2867,8 +2876,17 @@ async function saveProject(event) {
         });
         
         if (response.success) {
-            showToast(id ? 'Proyecto actualizado' : 'Proyecto creado', 'success');
+            // Si se generó formulario, mostrar toast con link
+            if (response.form_generated && response.form_generated.url) {
+                const formUrl = window.location.origin + window.location.pathname.replace('index.html', '') + response.form_generated.url;
+                showToast(`Proyecto creado - <a href="${formUrl}" target="_blank" style="color: inherit; text-decoration: underline;">Ver formulario</a>`, 'success', 8000);
+            } else {
+                showToast(id ? 'Proyecto actualizado' : 'Proyecto creado', 'success');
+            }
             closeModal('modal-project');
+            
+            // Recargar state.projects para que aparezca en el dropdown de nuevo ticket
+            await loadInitialData();
             
             if (id && currentProject) {
                 loadProjectDetail(id);
