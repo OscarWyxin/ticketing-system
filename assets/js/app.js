@@ -51,9 +51,35 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
     setupEventListeners();
     setupIframeListener();
-    await loadInitialData();
-    loadStats();
-    loadTickets();
+    
+    // Cargar stats primero para badges inmediatos
+    await loadStats();
+    updateBadges();
+    
+    // Cargar data inicial en paralelo con tickets
+    await Promise.all([
+        loadInitialData(),
+        loadTickets()
+    ]);
+    
+    // Restaurar última vista desde localStorage
+    restoreLastView();
+}
+
+function restoreLastView() {
+    const savedView = localStorage.getItem('ticketing_currentView');
+    const savedAgentEmail = localStorage.getItem('ticketing_agentEmail');
+    
+    if (savedAgentEmail) {
+        // Restaurar vista de agente
+        loadAgentDashboardByEmail(savedAgentEmail);
+        // Marcar nav item activo
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.agentEmail === savedAgentEmail);
+        });
+    } else if (savedView && savedView !== 'dashboard') {
+        showView(savedView);
+    }
 }
 
 // Listen for messages from embedded forms
@@ -424,6 +450,9 @@ function renderStats() {
     document.getElementById('stat-open').textContent = stats.by_status?.open || 0;
     document.getElementById('stat-progress').textContent = stats.by_status?.in_progress || 0;
     document.getElementById('stat-resolved').textContent = stats.by_status?.resolved || 0;
+    
+    // Actualizar badges de navegación inmediatamente
+    updateBadges();
 
     // Render priority stats
     const priorityStats = document.getElementById('priority-stats');
@@ -1314,6 +1343,10 @@ function renderPagination() {
 
 function showView(view) {
     state.currentView = view;
+    
+    // Guardar vista en localStorage
+    localStorage.setItem('ticketing_currentView', view);
+    localStorage.removeItem('ticketing_agentEmail'); // Limpiar agente si cambia de vista
 
     // Actualizar navegación
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -2288,6 +2321,10 @@ async function loadAgentDashboardByEmail(email) {
         showToast('Agente no encontrado', 'error');
         return;
     }
+    
+    // Guardar en localStorage para persistencia
+    localStorage.setItem('ticketing_agentEmail', email);
+    localStorage.setItem('ticketing_currentView', 'agent');
     
     const agentShort = AGENT_EMAIL_TO_SHORT[email];
     if (!agentShort) return;
