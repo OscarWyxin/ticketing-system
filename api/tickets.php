@@ -889,8 +889,8 @@ function getTicketTracking($pdo, $ticketNumber, $token) {
         
         // Obtener actividades del ticket
         $stmt = $pdo->prepare("
-            SELECT id, ticket_id, user_id, action, old_value, new_value, description, created_at
-            FROM activities
+            SELECT id, ticket_id, user_id, action, old_value, new_value, created_at
+            FROM activity_log
             WHERE ticket_id = ?
             ORDER BY created_at DESC
             LIMIT 10
