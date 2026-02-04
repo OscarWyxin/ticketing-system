@@ -54,18 +54,42 @@ async function init() {
     setupEventListeners();
     setupIframeListener();
     
-    // Cargar stats primero para badges inmediatos
+    // Verificar si hay vista guardada que requiere carga especial
+    const savedView = localStorage.getItem('ticketing_currentView');
+    const savedTicketId = localStorage.getItem('ticketing_currentTicketId');
+    const savedAgentEmail = localStorage.getItem('ticketing_agentEmail');
+    
+    // Cargar data inicial (necesaria para todos los casos)
+    await loadInitialData();
+    
+    // Si hay un ticket específico guardado, cargarlo directamente
+    if (savedView === 'ticket-detail' && savedTicketId) {
+        await loadStats();
+        updateBadges();
+        await loadTicketDetail(savedTicketId);
+        return; // No cargar más
+    }
+    
+    // Si hay un agente guardado, cargar su dashboard
+    if (savedAgentEmail) {
+        await loadStats();
+        updateBadges();
+        loadAgentDashboardByEmail(savedAgentEmail);
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.agentEmail === savedAgentEmail);
+        });
+        return;
+    }
+    
+    // Flujo normal: cargar stats y tickets
     await loadStats();
     updateBadges();
+    await loadTickets();
     
-    // Cargar data inicial en paralelo con tickets
-    await Promise.all([
-        loadInitialData(),
-        loadTickets()
-    ]);
-    
-    // Restaurar última vista desde localStorage
-    restoreLastView();
+    // Restaurar otras vistas (projects, backlog, etc.)
+    if (savedView && savedView !== 'dashboard' && savedView !== 'ticket-detail') {
+        showView(savedView);
+    }
 }
 
 function restoreLastView() {
