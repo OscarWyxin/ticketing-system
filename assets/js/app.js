@@ -2802,67 +2802,80 @@ function renderProjectDetail(project) {
     const projectStatus = getProjectTimeStatus(project);
     const overview = document.getElementById('project-overview');
     overview.innerHTML = `
-        <div class="project-info">
-            <h2>${escapeHtml(project.name)} <span class="project-status-badge ${projectStatus.class}">${projectStatus.label}</span></h2>
-            ${project.description ? `<p>${escapeHtml(project.description)}</p>` : ''}
-            <div class="project-progress-section">
-                <div class="progress-header">
-                    <span>Progreso general</span>
-                    <span class="progress-percentage">${progress}%</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar-fill" style="width: ${progress}%"></div>
+        <div class="project-header-section">
+            <div class="project-title-row">
+                <h2>${escapeHtml(project.name)}</h2>
+                <span class="project-status-badge ${projectStatus.class}">${projectStatus.label}</span>
+            </div>
+            ${project.description ? `<p class="project-description">${escapeHtml(project.description)}</p>` : ''}
+        </div>
+        
+        <div class="project-content-grid">
+            <div class="project-info-card">
+                <h4><i class="fas fa-info-circle"></i> Información</h4>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <i class="fas fa-user-check" style="color: #10b981;"></i>
+                        <div>
+                            <span class="info-label">Responsable</span>
+                            <span class="info-value">${project.responsible_name || 'Sin asignar'}</span>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-building" style="color: #6366f1;"></i>
+                        <div>
+                            <span class="info-label">Cliente</span>
+                            <span class="info-value">${project.client_name || 'Sin cliente'}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="project-details">
-                <div class="project-detail-item">
-                    <span class="label"><i class="fas fa-user-check" style="color: #10b981;"></i> Responsable</span>
-                    <span class="value">${project.responsible_name || 'Sin asignar'}</span>
+            
+            <div class="project-info-card">
+                <h4><i class="fas fa-calendar-alt"></i> Fechas</h4>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <i class="fas fa-play-circle" style="color: #10b981;"></i>
+                        <div>
+                            <span class="info-label">Inicio</span>
+                            <span class="info-value">${project.start_date ? formatDate(project.start_date) : 'Sin definir'}</span>
+                        </div>
+                    </div>
+                    <div class="info-item">
+                        <i class="fas fa-flag-checkered" style="color: #ef4444;"></i>
+                        <div>
+                            <span class="info-label">Fin</span>
+                            <span class="info-value">${project.end_date ? formatDate(project.end_date) : 'Sin definir'}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="project-detail-item">
-                    <span class="label"><i class="fas fa-building" style="color: #6366f1;"></i> Cliente</span>
-                    <span class="value">${project.client_name || 'Sin cliente'}</span>
-                </div>
-                ${project.start_date ? `
-                <div class="project-detail-item">
-                    <span class="label"><i class="fas fa-play-circle" style="color: #10b981;"></i> Inicio</span>
-                    <span class="value">${formatDate(project.start_date)}</span>
-                </div>
-                ` : ''}
-                ${project.end_date ? `
-                <div class="project-detail-item">
-                    <span class="label"><i class="fas fa-flag-checkered" style="color: #ef4444;"></i> Fin</span>
-                    <span class="value">${formatDate(project.end_date)}</span>
-                </div>
-                ` : ''}
-                <div class="project-detail-item">
-                    <span class="label">Formulario</span>
-                    <span class="value">
-                        <a href="forms/form-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.html" 
-                           target="_blank" style="color: var(--primary); text-decoration: none;">
-                            <i class="fas fa-external-link-alt"></i> Abrir formulario
-                        </a>
-                    </span>
+            </div>
+            
+            <div class="project-info-card project-progress-card">
+                <h4><i class="fas fa-chart-line"></i> Progreso</h4>
+                <div class="progress-visual">
+                    <div class="progress-circle" style="--progress: ${progress}">
+                        <span class="progress-number">${progress}%</span>
+                    </div>
+                    <div class="progress-stats">
+                        <div class="stat-row">
+                            <span class="stat-label">Fases</span>
+                            <span class="stat-value">${project.stats?.total_phases || 0}</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Actividades</span>
+                            <span class="stat-value">${project.stats?.completed_activities || 0}/${project.stats?.total_activities || 0}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="project-stats">
-            <div class="project-stat">
-                <div class="number">${project.stats?.total_phases || 0}</div>
-                <div class="label">Fases</div>
-            </div>
-            <div class="project-stat">
-                <div class="number">${project.stats?.total_activities || 0}</div>
-                <div class="label">Actividades</div>
-            </div>
-            <div class="project-stat">
-                <div class="number">${project.stats?.completed_activities || 0}</div>
-                <div class="label">Completadas</div>
-            </div>
-            <div class="project-stat">
-                <div class="number">${project.stats?.progress || 0}%</div>
-                <div class="label">Progreso</div>
-            </div>
+        
+        <div class="project-actions-bar">
+            <a href="forms/form-${project.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.html" 
+               target="_blank" class="btn btn-secondary btn-sm">
+                <i class="fas fa-external-link-alt"></i> Abrir formulario
+            </a>
         </div>
     `;
     
