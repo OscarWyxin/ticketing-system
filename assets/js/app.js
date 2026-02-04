@@ -71,6 +71,7 @@ async function init() {
 function restoreLastView() {
     const savedView = localStorage.getItem('ticketing_currentView');
     const savedAgentEmail = localStorage.getItem('ticketing_agentEmail');
+    const savedTicketId = localStorage.getItem('ticketing_currentTicketId');
     
     if (savedAgentEmail) {
         // Restaurar vista de agente
@@ -79,6 +80,12 @@ function restoreLastView() {
         document.querySelectorAll('.nav-item').forEach(item => {
             item.classList.toggle('active', item.dataset.agentEmail === savedAgentEmail);
         });
+    } else if (savedView === 'ticket-detail' && savedTicketId) {
+        // Restaurar vista de ticket específico
+        loadTicketDetail(savedTicketId);
+    } else if (savedView === 'project-detail') {
+        // Para project-detail, volver a proyectos (no persistimos el ID)
+        showView('projects');
     } else if (savedView && savedView !== 'dashboard') {
         showView(savedView);
     }
@@ -339,6 +346,8 @@ async function loadTicketDetail(id) {
         const response = await apiCall(`${TICKETS_API}?action=get&id=${id}`);
         if (response.success) {
             state.currentTicket = response.data;
+            // Guardar ticket ID para persistencia
+            localStorage.setItem('ticketing_currentTicketId', id);
             renderTicketDetail();
             showTimerForPuntual();
             resetTimer();
@@ -1355,6 +1364,11 @@ function showView(view) {
     // Guardar vista en localStorage
     localStorage.setItem('ticketing_currentView', view);
     localStorage.removeItem('ticketing_agentEmail'); // Limpiar agente si cambia de vista
+    
+    // Limpiar ticket ID si no estamos en ticket-detail
+    if (view !== 'ticket-detail') {
+        localStorage.removeItem('ticketing_currentTicketId');
+    }
 
     // Actualizar navegación
     document.querySelectorAll('.nav-item').forEach(item => {
@@ -2945,13 +2959,13 @@ function togglePhase(phaseId) {
 // MODALES DE PROYECTOS
 // =====================================================
 
-function openNewProjectModal() {
+async function openNewProjectModal() {
     document.getElementById('modal-project-title').innerHTML = '<i class="fas fa-folder-plus"></i> Nuevo Proyecto';
     document.getElementById('form-project').reset();
     document.getElementById('project-id').value = '';
     
     // Cargar opciones de responsables y clientes
-    populateProjectSelects();
+    await populateProjectSelects();
     
     openModal('modal-project');
 }
@@ -2972,7 +2986,7 @@ async function populateProjectSelects() {
     }
 }
 
-function editCurrentProject() {
+async function editCurrentProject() {
     if (!currentProject) return;
     
     document.getElementById('modal-project-title').innerHTML = '<i class="fas fa-edit"></i> Editar Proyecto';
@@ -2982,12 +2996,11 @@ function editCurrentProject() {
     document.getElementById('project-start-date').value = currentProject.start_date || '';
     document.getElementById('project-end-date').value = currentProject.end_date || '';
     
-    populateProjectSelects();
+    await populateProjectSelects();
     
-    setTimeout(() => {
-        document.getElementById('project-responsible').value = currentProject.responsible_id || '';
-        document.getElementById('project-client').value = currentProject.client_id || '';
-    }, 100);
+    // Ahora sí asignar los valores seleccionados
+    document.getElementById('project-responsible').value = currentProject.responsible_id || '';
+    document.getElementById('project-client').value = currentProject.client_id || '';
     
     openModal('modal-project');
 }
@@ -3050,7 +3063,7 @@ function openNewPhaseModal() {
 }
 
 function editPhase(phaseId) {
-    const phase = currentProject?.phases?.find(p => p.id === phaseId);
+    const phase = currentProject?.phases?.find(p => Number(p.id) === Number(phaseId));
     if (!phase) return;
     
     document.getElementById('modal-phase-title').innerHTML = '<i class="fas fa-edit"></i> Editar Fase';
@@ -3150,10 +3163,10 @@ async function populateActivitySelects() {
     }
 }
 
-function editActivity(activityId) {
+async function editActivity(activityId) {
     let activity = null;
     for (const phase of (currentProject?.phases || [])) {
-        activity = phase.activities?.find(a => a.id === activityId);
+        activity = phase.activities?.find(a => Number(a.id) === Number(activityId));
         if (activity) break;
     }
     if (!activity) return;
@@ -3168,12 +3181,12 @@ function editActivity(activityId) {
     document.getElementById('activity-start-date').value = activity.start_date || '';
     document.getElementById('activity-end-date').value = activity.end_date || '';
     
-    populateActivitySelects();
+    // Esperar a que se carguen los selects antes de asignar valores
+    await populateActivitySelects();
     
-    setTimeout(() => {
-        document.getElementById('activity-contact').value = activity.contact_user_id || '';
-        document.getElementById('activity-assigned').value = activity.assigned_to || '';
-    }, 100);
+    // Ahora sí asignar los valores seleccionados
+    document.getElementById('activity-contact').value = activity.contact_user_id || '';
+    document.getElementById('activity-assigned').value = activity.assigned_to || '';
     
     openModal('modal-activity');
 }
