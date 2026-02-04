@@ -325,7 +325,7 @@
                                 <div class="timeline-dot"></div>
                                 <div class="timeline-content">
                                     <div class="timeline-date">${formatDate(activity.created_at)}</div>
-                                    <div class="timeline-text">${activity.description}</div>
+                                    <div class="timeline-text">${formatActivityDescription(activity)}</div>
                                 </div>
                             </div>
                         `;
@@ -388,6 +388,30 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        function formatActivityDescription(activity) {
+            const actionLabels = {
+                'created': '🆕 Ticket creado',
+                'status_changed': '📊 Estado cambiado',
+                'priority_changed': '⚡ Prioridad cambiada',
+                'assigned': '👤 Asignado',
+                'comment_added': '💬 Comentario añadido',
+                'updated': '✏️ Actualizado',
+                'resolved': '✅ Resuelto',
+                'closed': '🔒 Cerrado',
+                'reopened': '🔓 Reabierto'
+            };
+            
+            let text = actionLabels[activity.action] || activity.action || 'Actualización';
+            
+            if (activity.old_value && activity.new_value) {
+                text += `: ${activity.old_value} → ${activity.new_value}`;
+            } else if (activity.new_value) {
+                text += `: ${activity.new_value}`;
+            }
+            
+            return text;
         }
         
         // Cargar ticket al iniciar
