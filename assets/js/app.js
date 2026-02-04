@@ -3115,27 +3115,31 @@ async function deletePhase(phaseId) {
 // MODALES DE ACTIVIDADES
 // =====================================================
 
-function openNewActivityModal(phaseId) {
+async function openNewActivityModal(phaseId) {
     document.getElementById('modal-activity-title').innerHTML = '<i class="fas fa-tasks"></i> Nueva Actividad';
     document.getElementById('form-activity').reset();
     document.getElementById('activity-id').value = '';
     document.getElementById('activity-phase-id').value = phaseId;
     
-    populateActivitySelects();
+    await populateActivitySelects();
     
     openModal('modal-activity');
 }
 
-function populateActivitySelects() {
-    // Contactos
+async function populateActivitySelects() {
+    // Contactos - cargar dinámicamente desde la API
     const contactSelect = document.getElementById('activity-contact');
     if (contactSelect) {
-        contactSelect.innerHTML = `
-            <option value="">Sin contacto</option>
-            <option value="3">Alfonso Bello</option>
-            <option value="6">Alicia Urdiales</option>
-            <option value="150">Angel Aparicio</option>
-        `;
+        try {
+            const response = await apiCall(`${HELPERS_API}?action=users`);
+            if (response.success && response.data) {
+                contactSelect.innerHTML = '<option value="">Sin contacto</option>' +
+                    response.data.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
+            }
+        } catch (error) {
+            console.error('Error cargando contactos:', error);
+            contactSelect.innerHTML = '<option value="">Sin contacto</option>';
+        }
     }
     
     // Asignados (agentes)
@@ -3161,6 +3165,8 @@ function editActivity(activityId) {
     document.getElementById('activity-description').value = activity.description || '';
     document.getElementById('activity-notes').value = activity.notes || '';
     document.getElementById('activity-video').value = activity.video_url || '';
+    document.getElementById('activity-start-date').value = activity.start_date || '';
+    document.getElementById('activity-end-date').value = activity.end_date || '';
     
     populateActivitySelects();
     

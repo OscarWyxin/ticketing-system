@@ -388,8 +388,8 @@ function createActivity($pdo) {
     $nextOrder = $stmt->fetch()['next_order'];
     
     $stmt = $pdo->prepare("INSERT INTO project_activities 
-                           (phase_id, project_id, title, description, contact_user_id, assigned_to, notes, video_url, sort_order, status) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+                           (phase_id, project_id, title, description, contact_user_id, assigned_to, notes, video_url, start_date, end_date, sort_order, status) 
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
     $stmt->execute([
         $input['phase_id'],
         $phase['project_id'],
@@ -399,6 +399,8 @@ function createActivity($pdo) {
         $input['assigned_to'] ?? null,
         $input['notes'] ?? null,
         $input['video_url'] ?? null,
+        $input['start_date'] ?? null,
+        $input['end_date'] ?? null,
         $nextOrder
     ]);
     
@@ -418,7 +420,7 @@ function updateActivity($pdo, $id) {
     $fields = [];
     $values = [];
     
-    $allowedFields = ['title', 'description', 'contact_user_id', 'assigned_to', 'notes', 'video_url', 'status', 'sort_order'];
+    $allowedFields = ['title', 'description', 'contact_user_id', 'assigned_to', 'notes', 'video_url', 'status', 'sort_order', 'start_date', 'end_date'];
     
     foreach ($allowedFields as $field) {
         if (isset($input[$field])) {
