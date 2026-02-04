@@ -1454,3 +1454,87 @@ function notifyTicketRejected($pdo, $ticketData) {
         'result' => $result
     ];
 }
+
+/**
+ * Notificar asignación de actividad de proyecto
+ */
+function notifyActivityAssignment($pdo, $userId, $activityData) {
+    notifLog("========================================");
+    notifLog("NOTIFICACION DE ACTIVIDAD ASIGNADA");
+    notifLog("Actividad: " . ($activityData['title'] ?? 'N/A'));
+    notifLog("Proyecto: " . ($activityData['project_name'] ?? 'N/A'));
+    notifLog("Usuario destino: $userId");
+    notifLog("========================================");
+    
+    // Obtener datos del usuario
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+    
+    if (!$user || empty($user['email'])) {
+        notifLog("Usuario no encontrado o sin email");
+        return ['success' => false, 'error' => 'Usuario no encontrado'];
+    }
+    
+    // Buscar/crear contacto en GHL
+    $contactId = findOrCreateContact($user['email'], $user['name']);
+    if (!$contactId) {
+        notifLog("No se pudo crear contacto GHL");
+        return ['success' => false, 'error' => 'No se pudo crear contacto'];
+    }
+    
+    // Construir email
+    $projectName = $activityData['project_name'] ?? 'Proyecto';
+    $title = $activityData['title'] ?? 'Nueva actividad';
+    $description = $activityData['description'] ?? '';
+    
+    $emailData = [
+        'type' => 'Email',
+        'contactId' => $contactId,
+        'subject' => "📋 Nueva actividad asignada: {$title}",
+        'html' => "
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset='UTF-8'>
+        </head>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px 8px 0 0;'>
+                    <h1 style='color: white; margin: 0; font-size: 24px;'>📋 Nueva Actividad Asignada</h1>
+                </div>
+                
+                <div style='background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb;'>
+                    <p>Hola <strong>{$user['name']}</strong>,</p>
+                    
+                    <p>Se te ha asignado una nueva actividad en el proyecto <strong>{$projectName}</strong>:</p>
+                    
+                    <div style='background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; margin: 15px 0;'>
+                        <h3 style='margin: 0 0 10px 0; color: #1f2937;'>{$title}</h3>
+                        " . ($description ? "<p style='color: #6b7280; margin: 0;'>{$description}</p>" : "") . "
+                    </div>
+                    
+                    <p style='margin-top: 20px;'>
+                        <a href='https://tickets.srv764777.hstgr.cloud/' 
+                           style='background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;'>
+                            Ver en el Sistema
+                        </a>
+                    </p>
+                </div>
+                
+                <div style='text-align: center; padding: 15px; color: #9ca3af; font-size: 12px;'>
+                    Sistema de Gestión de Proyectos - Abel Ross
+                </div>
+            </div>
+        </body>
+        </html>"
+    ];
+    
+    $result = ghlApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
+    notifLog("Resultado email actividad: " . json_encode($result));
+    
+    return [
+        'success' => !isset($result['error']),
+        'result' => $result
+    ];
+}

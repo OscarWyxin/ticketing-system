@@ -3170,19 +3170,19 @@ async function populateActivitySelects() {
         try {
             const response = await apiCall(`${HELPERS_API}?action=users`);
             if (response.success && response.data) {
-                contactSelect.innerHTML = '<option value="">Sin contacto</option>' +
+                contactSelect.innerHTML = '<option value="">Seleccionar contacto...</option>' +
                     response.data.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
             }
         } catch (error) {
             console.error('Error cargando contactos:', error);
-            contactSelect.innerHTML = '<option value="">Sin contacto</option>';
+            contactSelect.innerHTML = '<option value="">Seleccionar contacto...</option>';
         }
     }
     
     // Asignados (agentes)
     const assignedSelect = document.getElementById('activity-assigned');
     if (assignedSelect && state.agents && state.agents.length > 0) {
-        assignedSelect.innerHTML = '<option value="">Sin asignar</option>' +
+        assignedSelect.innerHTML = '<option value="">Seleccionar agente...</option>' +
             state.agents.map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
     }
 }

@@ -14,6 +14,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/ghl-notifications.php';
 
 $pdo = getConnection();
 $action = $_GET['action'] ?? 'list';
@@ -426,6 +427,22 @@ function createActivity($pdo) {
     
     $activityId = $pdo->lastInsertId();
     
+    // Notificar al responsable si se asignó uno
+    if ($assignedTo && function_exists('notifyActivityAssignment')) {
+        // Obtener nombre del proyecto
+        $stmt = $pdo->prepare("SELECT name FROM projects WHERE id = ?");
+        $stmt->execute([$phase['project_id']]);
+        $projectName = $stmt->fetch()['name'] ?? 'Proyecto';
+        
+        notifyActivityAssignment($pdo, $assignedTo, [
+            'activity_id' => $activityId,
+            'title' => $input['title'],
+            'description' => $input['description'] ?? '',
+            'project_name' => $projectName,
+            'project_id' => $phase['project_id']
+        ]);
+    }
+    
     echo json_encode(['success' => true, 'id' => $activityId, 'message' => 'Actividad creada']);
 }
 
@@ -436,6 +453,12 @@ function updateActivity($pdo, $id) {
     }
     
     $input = json_decode(file_get_contents('php://input'), true);
+    
+    // Obtener actividad actual para comparar assigned_to
+    $stmt = $pdo->prepare("SELECT pa.*, p.name as project_name FROM project_activities pa 
+                           JOIN projects p ON pa.project_id = p.id WHERE pa.id = ?");
+    $stmt->execute([$id]);
+    $currentActivity = $stmt->fetch();
     
     $fields = [];
     $values = [];
@@ -464,6 +487,18 @@ function updateActivity($pdo, $id) {
     $sql = "UPDATE project_activities SET " . implode(', ', $fields) . ", updated_at = NOW() WHERE id = ?";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($values);
+    
+    // Notificar si cambió el asignado
+    $newAssignedTo = isset($input['assigned_to']) && $input['assigned_to'] !== '' ? $input['assigned_to'] : null;
+    if ($newAssignedTo && $newAssignedTo != $currentActivity['assigned_to'] && function_exists('notifyActivityAssignment')) {
+        notifyActivityAssignment($pdo, $newAssignedTo, [
+            'activity_id' => $id,
+            'title' => $input['title'] ?? $currentActivity['title'],
+            'description' => $input['description'] ?? $currentActivity['description'] ?? '',
+            'project_name' => $currentActivity['project_name'],
+            'project_id' => $currentActivity['project_id']
+        ]);
+    }
     
     echo json_encode(['success' => true, 'message' => 'Actividad actualizada']);
 }
