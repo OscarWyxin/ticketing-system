@@ -184,15 +184,21 @@ function createProject($pdo) {
         return;
     }
     
+    // Convertir strings vacíos a null para campos opcionales
+    $clientId = !empty($input['client_id']) ? $input['client_id'] : null;
+    $responsibleId = !empty($input['responsible_id']) ? $input['responsible_id'] : null;
+    $startDate = !empty($input['start_date']) ? $input['start_date'] : null;
+    $endDate = !empty($input['end_date']) ? $input['end_date'] : null;
+    
     $stmt = $pdo->prepare("INSERT INTO projects (name, description, client_id, responsible_id, start_date, end_date, backlog_type, status) 
                            VALUES (?, ?, ?, ?, ?, ?, ?, 'active')");
     $stmt->execute([
         $input['name'],
         $input['description'] ?? null,
-        $input['client_id'] ?? null,
-        $input['responsible_id'] ?? null,
-        $input['start_date'] ?? null,
-        $input['end_date'] ?? null,
+        $clientId,
+        $responsibleId,
+        $startDate,
+        $endDate,
         $input['backlog_type'] ?? 'consultoria'
     ]);
     
@@ -221,11 +227,19 @@ function updateProject($pdo, $id) {
     $values = [];
     
     $allowedFields = ['name', 'description', 'client_id', 'responsible_id', 'start_date', 'end_date', 'status'];
+    $integerFields = ['client_id', 'responsible_id'];
     
     foreach ($allowedFields as $field) {
         if (isset($input[$field])) {
             $fields[] = "$field = ?";
-            $values[] = $input[$field] ?: null;
+            // Convertir strings vacíos a null para campos integer
+            $value = $input[$field];
+            if (in_array($field, $integerFields) && $value === '') {
+                $value = null;
+            } elseif ($value === '') {
+                $value = null;
+            }
+            $values[] = $value;
         }
     }
     
@@ -387,6 +401,12 @@ function createActivity($pdo) {
     $stmt->execute([$input['phase_id']]);
     $nextOrder = $stmt->fetch()['next_order'];
     
+    // Convertir strings vacíos a null
+    $contactUserId = !empty($input['contact_user_id']) ? $input['contact_user_id'] : null;
+    $assignedTo = !empty($input['assigned_to']) ? $input['assigned_to'] : null;
+    $startDate = !empty($input['start_date']) ? $input['start_date'] : null;
+    $endDate = !empty($input['end_date']) ? $input['end_date'] : null;
+    
     $stmt = $pdo->prepare("INSERT INTO project_activities 
                            (phase_id, project_id, title, description, contact_user_id, assigned_to, notes, video_url, start_date, end_date, sort_order, status) 
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
@@ -395,12 +415,12 @@ function createActivity($pdo) {
         $phase['project_id'],
         $input['title'],
         $input['description'] ?? null,
-        $input['contact_user_id'] ?? null,
-        $input['assigned_to'] ?? null,
+        $contactUserId,
+        $assignedTo,
         $input['notes'] ?? null,
         $input['video_url'] ?? null,
-        $input['start_date'] ?? null,
-        $input['end_date'] ?? null,
+        $startDate,
+        $endDate,
         $nextOrder
     ]);
     
@@ -421,11 +441,17 @@ function updateActivity($pdo, $id) {
     $values = [];
     
     $allowedFields = ['title', 'description', 'contact_user_id', 'assigned_to', 'notes', 'video_url', 'status', 'sort_order', 'start_date', 'end_date'];
+    $integerFields = ['contact_user_id', 'assigned_to', 'sort_order'];
     
     foreach ($allowedFields as $field) {
         if (isset($input[$field])) {
             $fields[] = "$field = ?";
-            $values[] = $input[$field] ?: null;
+            // Convertir strings vacíos a null
+            $value = $input[$field];
+            if ((in_array($field, $integerFields) || strpos($field, '_date') !== false) && $value === '') {
+                $value = null;
+            }
+            $values[] = $value ?: null;
         }
     }
     
