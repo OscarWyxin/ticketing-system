@@ -535,7 +535,7 @@ function updateTicket($pdo, $id) {
         $params = [];
         $allowedFields = ['title', 'description', 'status', 'priority', 'category_id', 'assigned_to', 'due_date', 
                           'work_type', 'hours_dedicated', 'max_delivery_date', 'project_id', 'briefing_url', 
-                          'video_url', 'monthly_hours', 'score', 'info_pending_status', 'revision_status', 'end_date', 'client_id', 'backlog', 'backlog_type', 'pending_info_details'];
+                          'video_url', 'monthly_hours', 'score', 'info_pending_status', 'revision_status', 'end_date', 'client_id', 'backlog', 'backlog_type', 'pending_info_details', 'deliverable'];
         
         foreach ($allowedFields as $field) {
             if (isset($input[$field])) {
