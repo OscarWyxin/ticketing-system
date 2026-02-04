@@ -140,7 +140,7 @@ function getProject($pdo, $id) {
     
     // Para cada fase, obtener actividades
     foreach ($phases as &$phase) {
-        $stmt = $pdo->prepare("SELECT pa.*, 
+        $stmtActivities = $pdo->prepare("SELECT pa.*, 
                                       uc.name as contact_name,
                                       ua.name as assigned_name,
                                       t.ticket_number
@@ -150,9 +150,10 @@ function getProject($pdo, $id) {
                                LEFT JOIN tickets t ON pa.ticket_id = t.id
                                WHERE pa.phase_id = ?
                                ORDER BY pa.sort_order ASC");
-        $stmt->execute([$phase['id']]);
-        $phase['activities'] = $stmt->fetchAll();
+        $stmtActivities->execute([$phase['id']]);
+        $phase['activities'] = $stmtActivities->fetchAll();
     }
+    unset($phase); // Romper la referencia para evitar bug de PHP
     
     $project['phases'] = $phases;
     

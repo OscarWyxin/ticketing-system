@@ -2798,29 +2798,40 @@ function renderProjectDetail(project) {
         `<i class="fas fa-folder-open"></i> ${escapeHtml(project.name)}`;
     
     // Overview
+    const progress = project.stats?.progress || 0;
+    const projectStatus = getProjectTimeStatus(project);
     const overview = document.getElementById('project-overview');
     overview.innerHTML = `
         <div class="project-info">
-            <h2>${escapeHtml(project.name)}</h2>
+            <h2>${escapeHtml(project.name)} <span class="project-status-badge ${projectStatus.class}">${projectStatus.label}</span></h2>
             ${project.description ? `<p>${escapeHtml(project.description)}</p>` : ''}
+            <div class="project-progress-section">
+                <div class="progress-header">
+                    <span>Progreso general</span>
+                    <span class="progress-percentage">${progress}%</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar-fill" style="width: ${progress}%"></div>
+                </div>
+            </div>
             <div class="project-details">
                 <div class="project-detail-item">
-                    <span class="label">Responsable</span>
+                    <span class="label"><i class="fas fa-user-check" style="color: #10b981;"></i> Responsable</span>
                     <span class="value">${project.responsible_name || 'Sin asignar'}</span>
                 </div>
                 <div class="project-detail-item">
-                    <span class="label">Cliente</span>
+                    <span class="label"><i class="fas fa-building" style="color: #6366f1;"></i> Cliente</span>
                     <span class="value">${project.client_name || 'Sin cliente'}</span>
                 </div>
                 ${project.start_date ? `
                 <div class="project-detail-item">
-                    <span class="label">Inicio</span>
+                    <span class="label"><i class="fas fa-play-circle" style="color: #10b981;"></i> Inicio</span>
                     <span class="value">${formatDate(project.start_date)}</span>
                 </div>
                 ` : ''}
                 ${project.end_date ? `
                 <div class="project-detail-item">
-                    <span class="label">Fin</span>
+                    <span class="label"><i class="fas fa-flag-checkered" style="color: #ef4444;"></i> Fin</span>
                     <span class="value">${formatDate(project.end_date)}</span>
                 </div>
                 ` : ''}
@@ -2873,18 +2884,33 @@ function renderRoadmap(phases) {
         return;
     }
     
-    container.innerHTML = phases.map((phase, index) => `
+    container.innerHTML = phases.map((phase, index) => {
+        const totalActivities = phase.activities?.length || 0;
+        const completedActivities = phase.activities?.filter(a => a.status === 'completed' || a.status === 'converted').length || 0;
+        const phaseProgress = totalActivities > 0 ? Math.round((completedActivities / totalActivities) * 100) : 0;
+        const connectorClass = phase.status === 'completed' ? 'completed' : (phase.status === 'in_progress' ? 'in-progress' : '');
+        
+        return `
         <div class="roadmap-phase" data-phase-id="${phase.id}">
             <div class="phase-header" onclick="togglePhase(${phase.id})">
                 <div class="phase-title">
                     <i class="fas fa-chevron-down" id="phase-chevron-${phase.id}"></i>
+                    <span class="phase-number">Fase ${index + 1}</span>
                     <i class="fas fa-layer-group"></i>
                     <span>${escapeHtml(phase.name)}</span>
-                    <span style="color: var(--gray-400); font-weight: normal; font-size: 0.85rem;">
-                        (${phase.activities?.length || 0} actividades)
-                    </span>
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px;">
+                    ${phase.start_date || phase.end_date ? `
+                    <span class="phase-dates">
+                        <i class="fas fa-calendar-alt"></i>
+                        ${phase.start_date ? formatDate(phase.start_date) : '?'} - ${phase.end_date ? formatDate(phase.end_date) : '?'}
+                    </span>` : ''}
+                    <div class="phase-progress-mini">
+                        <div class="phase-progress-bar">
+                            <div class="phase-progress-fill" style="width: ${phaseProgress}%"></div>
+                        </div>
+                        <span class="phase-progress-text">${completedActivities}/${totalActivities}</span>
+                    </div>
                     <span class="phase-status ${phase.status}">${getPhaseStatusLabel(phase.status)}</span>
                     <div class="phase-actions" onclick="event.stopPropagation()">
                         <button class="btn btn-sm btn-ghost" onclick="editPhase(${phase.id})" title="Editar">
@@ -2905,8 +2931,8 @@ function renderRoadmap(phases) {
                 </div>
             </div>
         </div>
-        ${index < phases.length - 1 ? '<div class="roadmap-connector"></div>' : ''}
-    `).join('');
+        ${index < phases.length - 1 ? `<div class="roadmap-connector ${connectorClass}"></div>` : ''}
+    `}).join('');
 }
 
 function renderActivities(activities, phaseId) {
@@ -2931,9 +2957,10 @@ function renderActivities(activities, phaseId) {
                     ${escapeHtml(activity.title)}
                 </div>
                 <div class="activity-meta">
-                    ${activity.assigned_name ? `<span><i class="fas fa-user"></i> ${escapeHtml(activity.assigned_name)}</span>` : ''}
-                    ${activity.contact_name ? `<span><i class="fas fa-phone"></i> ${escapeHtml(activity.contact_name)}</span>` : ''}
-                    ${activity.video_url ? `<span><i class="fas fa-video"></i> Con vídeo</span>` : ''}
+                    ${activity.assigned_name ? `<span class="meta-responsible"><i class="fas fa-user-check"></i> ${escapeHtml(activity.assigned_name)}</span>` : ''}
+                    ${activity.contact_name ? `<span class="meta-client"><i class="fas fa-user"></i> ${escapeHtml(activity.contact_name)}</span>` : ''}
+                    ${activity.start_date || activity.end_date ? `<span class="meta-dates"><i class="fas fa-calendar-alt"></i> ${activity.start_date ? formatDate(activity.start_date) : ''} ${activity.start_date && activity.end_date ? '-' : ''} ${activity.end_date ? formatDate(activity.end_date) : ''}</span>` : ''}
+                    ${activity.video_url ? `<span class="meta-video"><i class="fas fa-video"></i> Con vídeo</span>` : ''}
                 </div>
             </div>
             ${activity.ticket_id ? `
@@ -2964,6 +2991,40 @@ function getPhaseStatusLabel(status) {
         'completed': 'Completada'
     };
     return labels[status] || status;
+}
+
+function getProjectTimeStatus(project) {
+    const progress = project.stats?.progress || 0;
+    
+    // Si está completado
+    if (progress === 100) {
+        return { label: 'Completado', class: 'status-completed' };
+    }
+    
+    // Si no tiene fecha de fin, solo mostrar progreso
+    if (!project.end_date) {
+        if (progress === 0) return { label: 'Sin iniciar', class: 'status-pending' };
+        return { label: 'En progreso', class: 'status-in-progress' };
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endDate = new Date(project.end_date);
+    endDate.setHours(0, 0, 0, 0);
+    const daysRemaining = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+    
+    // Si ya pasó la fecha de fin
+    if (daysRemaining < 0) {
+        return { label: `Atrasado (${Math.abs(daysRemaining)} días)`, class: 'status-overdue' };
+    }
+    
+    // Si le quedan menos de 7 días
+    if (daysRemaining <= 7) {
+        return { label: `Próximo (${daysRemaining} días)`, class: 'status-warning' };
+    }
+    
+    // En tiempo normal
+    return { label: 'En tiempo', class: 'status-on-track' };
 }
 
 function togglePhase(phaseId) {

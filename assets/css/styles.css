@@ -2726,6 +2726,180 @@ textarea.form-control {
     height: 20px;
     background: var(--gray-300);
     margin: 0 auto;
+    transition: var(--transition);
+}
+
+.roadmap-connector.in-progress {
+    background: var(--warning);
+}
+
+.roadmap-connector.completed {
+    background: var(--success);
+}
+
+/* Project Status Badge */
+.project-status-badge {
+    font-size: 0.7rem;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.project-status-badge.status-completed {
+    background: var(--success-bg);
+    color: var(--success);
+}
+
+.project-status-badge.status-pending {
+    background: var(--gray-100);
+    color: var(--gray-600);
+}
+
+.project-status-badge.status-in-progress {
+    background: var(--primary-bg);
+    color: var(--primary);
+}
+
+.project-status-badge.status-on-track {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.project-status-badge.status-warning {
+    background: var(--warning-bg);
+    color: var(--warning);
+}
+
+.project-status-badge.status-overdue {
+    background: var(--danger-bg);
+    color: var(--danger);
+}
+
+/* Project Progress Section */
+.project-progress-section {
+    margin: 20px 0;
+    padding: 15px;
+    background: var(--gray-50);
+    border-radius: var(--radius);
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+    color: var(--gray-600);
+}
+
+.progress-percentage {
+    font-weight: 600;
+    color: var(--primary);
+}
+
+.progress-bar-container {
+    height: 8px;
+    background: var(--gray-200);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary), #818cf8);
+    border-radius: 4px;
+    transition: width 0.5s ease;
+}
+
+/* Phase Number Badge */
+.phase-number {
+    background: var(--primary);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+/* Phase Dates */
+.phase-dates {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.phase-dates i {
+    color: var(--gray-400);
+}
+
+/* Phase Progress Mini */
+.phase-progress-mini {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.phase-progress-bar {
+    width: 60px;
+    height: 6px;
+    background: var(--gray-200);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.phase-progress-fill {
+    height: 100%;
+    background: var(--success);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.phase-progress-text {
+    font-size: 0.7rem;
+    color: var(--gray-500);
+    font-weight: 500;
+    min-width: 30px;
+}
+
+/* Activity Meta Styling */
+.activity-meta .meta-responsible {
+    color: #10b981;
+}
+
+.activity-meta .meta-responsible i {
+    color: #10b981;
+}
+
+.activity-meta .meta-client {
+    color: #6366f1;
+}
+
+.activity-meta .meta-client i {
+    color: #6366f1;
+}
+
+.activity-meta .meta-dates {
+    color: var(--gray-500);
+}
+
+.activity-meta .meta-dates i {
+    color: var(--gray-400);
+}
+
+.activity-meta .meta-video {
+    color: #ef4444;
+}
+
+.activity-meta .meta-video i {
+    color: #ef4444;
+}
+
+/* Project detail item icons */
+.project-detail-item .label i {
+    margin-right: 5px;
 }
 
 /* Responsive */
@@ -2740,5 +2914,13 @@ textarea.form-control {
     
     .project-stats {
         grid-template-columns: repeat(4, 1fr);
+    }
+    
+    .phase-progress-mini {
+        display: none;
+    }
+    
+    .phase-dates {
+        display: none;
     }
 }
