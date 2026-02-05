@@ -1331,27 +1331,54 @@ function renderComments(comments) {
     }
 
     return comments.map(comment => {
+        // Detectar si es respuesta del cliente (no tiene user_id, solo author_name)
+        const isClientResponse = !comment.user_id && comment.author_name;
+        
         // Renderizar attachments si existen
         let attachmentsHtml = '';
         if (comment.attachments && comment.attachments.length > 0) {
-            attachmentsHtml = '<div class="comment-attachments" style="margin-top: 10px;">' +
+            attachmentsHtml = '<div class="comment-attachments" style="margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px;">' +
                 comment.attachments.map(att => {
                     const isImage = att.file_type && att.file_type.startsWith('image/');
                     const fileUrl = '/' + att.filename;
                     if (isImage) {
-                        return `<a href="${fileUrl}" target="_blank" class="comment-attachment-link" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--gray-100); border-radius: 6px; text-decoration: none; color: var(--gray-700); font-size: 0.85rem; margin-right: 8px;">
-                            <img src="${fileUrl}" alt="${escapeHtml(att.original_name)}" style="max-width: 120px; max-height: 80px; border-radius: 4px;">
+                        return `<a href="${fileUrl}" target="_blank" style="display: block; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+                            <img src="${fileUrl}" alt="${escapeHtml(att.original_name)}" style="max-width: 200px; max-height: 150px; display: block;">
                         </a>`;
                     } else {
-                        return `<a href="${fileUrl}" target="_blank" class="comment-attachment-link" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--gray-100); border-radius: 6px; text-decoration: none; color: var(--gray-700); font-size: 0.85rem; margin-right: 8px;">
-                            <i class="fas fa-paperclip"></i>
+                        return `<a href="${fileUrl}" target="_blank" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 14px; background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%); border-radius: 8px; text-decoration: none; color: var(--gray-700); font-size: 0.85rem; border: 1px solid var(--gray-200); transition: all 0.2s;" onmouseover="this.style.background='linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)'" onmouseout="this.style.background='linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'">
+                            <i class="fas fa-file-alt" style="color: var(--primary);"></i>
                             <span>${escapeHtml(att.original_name)}</span>
+                            <i class="fas fa-download" style="font-size: 0.75rem; color: var(--gray-400);"></i>
                         </a>`;
                     }
                 }).join('') +
             '</div>';
         }
         
+        // Estilo especial para respuestas del cliente
+        if (isClientResponse) {
+            return `
+            <div class="comment-item client-response" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1px solid #93c5fd; border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <div style="background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-reply"></i>
+                        Respuesta del Cliente
+                    </div>
+                    <span style="color: var(--gray-500); font-size: 0.8rem;">${timeAgo(comment.created_at)}</span>
+                </div>
+                <div style="display: flex; gap: 12px;">
+                    <img class="comment-avatar" src="https://ui-avatars.com/api/?name=${encodeURIComponent(comment.author_name || 'C')}&background=3b82f6&color=fff" alt="" style="width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;">
+                    <div style="flex: 1;">
+                        <div style="font-weight: 600; color: #1e40af; margin-bottom: 6px;">${escapeHtml(comment.author_name || 'Cliente')}</div>
+                        <div style="color: #1e3a5f; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(comment.content)}</div>
+                        ${attachmentsHtml}
+                    </div>
+                </div>
+            </div>
+        `}
+        
+        // Comentario normal (interno o de agente)
         return `
         <div class="comment-item ${comment.is_internal ? 'internal' : ''}">
             <img class="comment-avatar" src="https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user_name || comment.author_name || 'U')}&background=6366f1&color=fff" alt="">
