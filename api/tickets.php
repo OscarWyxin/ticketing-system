@@ -104,6 +104,9 @@ switch ($action) {
     case 'tracking':
         getTicketTracking($pdo, $_GET['id'] ?? '', $_GET['token'] ?? '');
         break;
+    case 'submit-pending-info':
+        submitPendingInfo($pdo);
+        break;
     case 'webhook':
         handleGHLWebhook($pdo);
         break;
@@ -906,6 +909,195 @@ function getTicketTracking($pdo, $ticketNumber, $token) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Error al obtener ticket: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * Recibir información pendiente del cliente desde la página de seguimiento
+ */
+function submitPendingInfo($pdo) {
+    $ticketNumber = $_POST['ticket_number'] ?? '';
+    $token = $_POST['token'] ?? '';
+    $response = $_POST['response'] ?? '';
+    
+    if (empty($ticketNumber) || empty($token) || empty($response)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'error' => 'Faltan datos requeridos']);
+        return;
+    }
+    
+    try {
+        // Obtener ticket
+        $stmt = $pdo->prepare("SELECT * FROM tickets WHERE ticket_number = ?");
+        $stmt->execute([$ticketNumber]);
+        $ticket = $stmt->fetch();
+        
+        if (!$ticket) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'Ticket no encontrado']);
+            return;
+        }
+        
+        // Validar token
+        $stmt = $pdo->prepare("
+            SELECT * FROM ticket_tracking_tokens 
+            WHERE ticket_id = ? AND token LIKE ? AND expires_at > NOW()
+        ");
+        $tokenPrefix = substr($token, 0, 20) . '%';
+        $stmt->execute([$ticket['id'], $tokenPrefix]);
+        $tokenRecord = $stmt->fetch();
+        
+        if (!$tokenRecord) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Enlace de seguimiento inválido o expirado']);
+            return;
+        }
+        
+        // Verificar que el ticket esté en estado waiting
+        if ($ticket['status'] !== 'waiting') {
+            echo json_encode(['success' => false, 'error' => 'Este ticket ya no está esperando información']);
+            return;
+        }
+        
+        // Manejar archivo adjunto si existe
+        $attachmentPath = null;
+        $attachmentName = null;
+        if (isset($_FILES['attachment']) && $_FILES['attachment']['error'] === UPLOAD_ERR_OK) {
+            $uploadDir = __DIR__ . '/../uploads/tickets/' . $ticket['id'] . '/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+            
+            $originalName = $_FILES['attachment']['name'];
+            $extension = pathinfo($originalName, PATHINFO_EXTENSION);
+            $safeName = 'client_response_' . date('Ymd_His') . '.' . $extension;
+            $targetPath = $uploadDir . $safeName;
+            
+            if (move_uploaded_file($_FILES['attachment']['tmp_name'], $targetPath)) {
+                $attachmentPath = 'uploads/tickets/' . $ticket['id'] . '/' . $safeName;
+                $attachmentName = $originalName;
+            }
+        }
+        
+        // Crear comentario con la respuesta del cliente
+        $commentText = "📨 **Respuesta del cliente:**\n\n" . $response;
+        if ($attachmentName) {
+            $commentText .= "\n\n📎 Archivo adjunto: " . $attachmentName;
+        }
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO ticket_comments (ticket_id, user_id, comment, is_internal, attachment_path, created_at)
+            VALUES (?, NULL, ?, 0, ?, NOW())
+        ");
+        $stmt->execute([$ticket['id'], $commentText, $attachmentPath]);
+        
+        // Actualizar ticket: cambiar estado a in_progress y limpiar pending_info_details
+        $stmt = $pdo->prepare("
+            UPDATE tickets 
+            SET status = 'in_progress', 
+                pending_info_details = NULL,
+                updated_at = NOW()
+            WHERE id = ?
+        ");
+        $stmt->execute([$ticket['id']]);
+        
+        // Registrar en activity_log
+        $stmt = $pdo->prepare("
+            INSERT INTO activity_log (ticket_id, user_id, action, old_value, new_value, created_at)
+            VALUES (?, NULL, 'pending_info_received', 'waiting', 'in_progress', NOW())
+        ");
+        $stmt->execute([$ticket['id']]);
+        
+        $stmt = $pdo->prepare("
+            INSERT INTO activity_log (ticket_id, user_id, action, old_value, new_value, created_at)
+            VALUES (?, NULL, 'status_changed', 'waiting', 'in_progress', NOW())
+        ");
+        $stmt->execute([$ticket['id']]);
+        
+        // Notificar al agente asignado
+        if ($ticket['assigned_to']) {
+            notifyAgentOfClientResponse($pdo, $ticket, $response, $attachmentName);
+        }
+        
+        echo json_encode([
+            'success' => true,
+            'message' => 'Respuesta enviada correctamente'
+        ]);
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Error al procesar: ' . $e->getMessage()]);
+    }
+}
+
+/**
+ * Notificar al agente que el cliente respondió
+ */
+function notifyAgentOfClientResponse($pdo, $ticket, $clientResponse, $attachmentName = null) {
+    // Obtener datos del agente
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$ticket['assigned_to']]);
+    $agent = $stmt->fetch();
+    
+    if (!$agent || empty($agent['email'])) {
+        return;
+    }
+    
+    // Preparar datos para la notificación
+    $ticketData = [
+        'ticket_number' => $ticket['ticket_number'],
+        'title' => $ticket['title'],
+        'client_response' => $clientResponse,
+        'attachment' => $attachmentName
+    ];
+    
+    // Enviar email al agente
+    $subject = "📨 Respuesta del cliente - Ticket {$ticket['ticket_number']}";
+    
+    $htmlBody = "
+    <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+        <div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 8px 8px 0 0;'>
+            <h2 style='color: white; margin: 0;'>📨 El cliente ha respondido</h2>
+        </div>
+        <div style='background: #f9f9f9; padding: 25px; border: 1px solid #ddd; border-top: none; border-radius: 0 0 8px 8px;'>
+            <p style='color: #333; font-size: 15px;'>El cliente ha enviado la información solicitada para el ticket:</p>
+            
+            <div style='background: white; padding: 15px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #667eea;'>
+                <p style='margin: 0 0 5px 0;'><strong>Ticket:</strong> {$ticket['ticket_number']}</p>
+                <p style='margin: 0;'><strong>Título:</strong> {$ticket['title']}</p>
+            </div>
+            
+            <div style='background: #e8f4fd; padding: 15px; border-radius: 6px; margin: 15px 0;'>
+                <p style='margin: 0 0 10px 0; font-weight: bold; color: #1976d2;'>💬 Respuesta del cliente:</p>
+                <p style='margin: 0; color: #333; white-space: pre-wrap;'>" . htmlspecialchars($clientResponse) . "</p>
+            </div>";
+    
+    if ($attachmentName) {
+        $htmlBody .= "
+            <p style='color: #666; font-size: 13px;'>📎 <strong>Archivo adjunto:</strong> {$attachmentName}</p>";
+    }
+    
+    $htmlBody .= "
+            <p style='color: #666; font-size: 14px; margin-top: 20px;'>El ticket ha sido cambiado automáticamente a estado <strong>En Progreso</strong>.</p>
+            
+            <div style='text-align: center; margin-top: 25px;'>
+                <a href='https://tickets.srv764777.hstgr.cloud/' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: bold;'>
+                    Ver Ticket
+                </a>
+            </div>
+        </div>
+    </div>";
+    
+    // Usar GHL para enviar el email
+    require_once __DIR__ . '/ghl-notifications.php';
+    
+    try {
+        $ghlConfig = getGHLConfig($pdo);
+        if ($ghlConfig && !empty($ghlConfig['access_token'])) {
+            sendEmailViaGHL($ghlConfig, $agent['email'], $subject, $htmlBody);
+        }
+    } catch (Exception $e) {
+        error_log("Error notifying agent of client response: " . $e->getMessage());
     }
 }
 

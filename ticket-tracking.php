@@ -209,6 +209,115 @@
             font-size: 13px;
             line-height: 1.5;
         }
+        
+        /* Response Form */
+        .response-form {
+            background: #f0f7ff;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        
+        .response-form h4 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        
+        .response-form textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            margin-bottom: 15px;
+        }
+        
+        .response-form textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .file-upload {
+            margin-bottom: 15px;
+        }
+        
+        .file-upload label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 15px;
+            background: white;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            cursor: pointer;
+            color: #666;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .file-upload label:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+        
+        .file-upload input[type="file"] {
+            display: none;
+        }
+        
+        .file-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #333;
+            display: none;
+        }
+        
+        .file-preview.visible {
+            display: block;
+        }
+        
+        .submit-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+        
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .submit-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .submit-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -315,6 +424,27 @@
                     `;
                 }
                 
+                // Formulario de respuesta si está en waiting
+                if (ticket.status === 'waiting') {
+                    html += `
+                        <div class="response-form" id="response-form">
+                            <h4>📝 Enviar la información solicitada</h4>
+                            <textarea id="response-text" placeholder="Escribe tu respuesta aquí..." required></textarea>
+                            <div class="file-upload">
+                                <label>
+                                    <span>📎</span>
+                                    <span>Adjuntar archivo (opcional)</span>
+                                    <input type="file" id="response-file" accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt" onchange="showFilePreview(this)">
+                                </label>
+                                <div class="file-preview" id="file-preview"></div>
+                            </div>
+                            <button class="submit-btn" onclick="submitResponse()">
+                                Enviar Respuesta
+                            </button>
+                        </div>
+                    `;
+                }
+                
                 // Timeline
                 if (data.activities && data.activities.length > 0) {
                     html += '<div class="timeline"><h3>📋 Historial de Cambios</h3>';
@@ -400,7 +530,8 @@
                 'updated': '✏️ Actualizado',
                 'resolved': '✅ Resuelto',
                 'closed': '🔒 Cerrado',
-                'reopened': '🔓 Reabierto'
+                'reopened': '🔓 Reabierto',
+                'pending_info_received': '📨 Información recibida del cliente'
             };
             
             let text = actionLabels[activity.action] || activity.action || 'Actualización';
@@ -412,6 +543,76 @@
             }
             
             return text;
+        }
+        
+        function showFilePreview(input) {
+            const preview = document.getElementById('file-preview');
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                preview.textContent = `📄 ${file.name} (${formatFileSize(file.size)})`;
+                preview.classList.add('visible');
+            } else {
+                preview.classList.remove('visible');
+            }
+        }
+        
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        }
+        
+        async function submitResponse() {
+            const responseText = document.getElementById('response-text').value.trim();
+            const fileInput = document.getElementById('response-file');
+            const submitBtn = document.querySelector('.submit-btn');
+            
+            if (!responseText) {
+                alert('Por favor, escribe tu respuesta antes de enviar.');
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Enviando...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('response', responseText);
+                formData.append('ticket_number', ticketId);
+                formData.append('token', token);
+                
+                if (fileInput.files && fileInput.files[0]) {
+                    formData.append('attachment', fileInput.files[0]);
+                }
+                
+                const response = await fetch('./api/tickets.php?action=submit-pending-info', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const formDiv = document.getElementById('response-form');
+                    formDiv.innerHTML = `
+                        <div class="submit-success">
+                            <h4>✅ ¡Respuesta enviada correctamente!</h4>
+                            <p>Tu información ha sido recibida. El equipo de soporte revisará tu respuesta y continuará con la gestión de tu ticket.</p>
+                            <p style="margin-top: 10px; font-size: 12px; color: #666;">La página se actualizará en 3 segundos...</p>
+                        </div>
+                    `;
+                    setTimeout(() => location.reload(), 3000);
+                } else {
+                    alert(data.error || 'Error al enviar la respuesta. Por favor, intenta de nuevo.');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Enviar Respuesta';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error de conexión. Por favor, intenta de nuevo.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Enviar Respuesta';
+            }
         }
         
         // Cargar ticket al iniciar
