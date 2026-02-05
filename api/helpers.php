@@ -89,8 +89,8 @@ function getAgentStats($pdo, $agentId) {
     $stmt->execute([$agentId]);
     $stats['total'] = $stmt->fetch()['total'];
 
-    // Open tickets
-    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM tickets WHERE assigned_to = ? AND status IN ('open', 'in_progress')");
+    // Open/Active tickets (includes waiting)
+    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM tickets WHERE assigned_to = ? AND status IN ('open', 'in_progress', 'waiting')");
     $stmt->execute([$agentId]);
     $stats['open'] = $stmt->fetch()['count'];
 
