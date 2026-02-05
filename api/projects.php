@@ -343,16 +343,16 @@ function deletePhase($pdo, $id) {
         return;
     }
     
-    // Verificar si tiene actividades convertidas a tickets
-    $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM project_activities WHERE phase_id = ? AND ticket_id IS NOT NULL");
+    // Desvincular tickets de las actividades antes de eliminar
+    // (los tickets siguen existiendo, solo se rompe la relación)
+    $stmt = $pdo->prepare("UPDATE tickets SET activity_id = NULL WHERE activity_id IN (SELECT id FROM project_activities WHERE phase_id = ?)");
     $stmt->execute([$id]);
-    $result = $stmt->fetch();
     
-    if ($result['count'] > 0) {
-        echo json_encode(['success' => false, 'error' => 'No se puede eliminar: tiene actividades convertidas a tickets']);
-        return;
-    }
+    // Eliminar actividades de la fase
+    $stmt = $pdo->prepare("DELETE FROM project_activities WHERE phase_id = ?");
+    $stmt->execute([$id]);
     
+    // Eliminar la fase
     $stmt = $pdo->prepare("DELETE FROM project_phases WHERE id = ?");
     $stmt->execute([$id]);
     
