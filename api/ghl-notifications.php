@@ -1538,3 +1538,143 @@ function notifyActivityAssignment($pdo, $userId, $activityData) {
         'result' => $result
     ];
 }
+
+/**
+ * Notificar al agente que el cliente respondió a la solicitud de información
+ */
+function notifyAgentOfClientResponse($pdo, $ticket, $clientResponse, $attachmentName = null) {
+    notifLog("=== NOTIFICANDO RESPUESTA DEL CLIENTE AL AGENTE ===");
+    
+    if (!$ticket['assigned_to']) {
+        notifLog("No hay agente asignado");
+        return ['success' => false, 'error' => 'No assigned agent'];
+    }
+    
+    // Obtener datos del agente
+    $stmt = $pdo->prepare("SELECT id, name, email FROM users WHERE id = ?");
+    $stmt->execute([$ticket['assigned_to']]);
+    $agent = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$agent || empty($agent['email'])) {
+        notifLog("Agente no encontrado o sin email");
+        return ['success' => false, 'error' => 'Agent not found or no email'];
+    }
+    
+    notifLog("Agente: {$agent['name']} ({$agent['email']})");
+    
+    // Buscar o crear contacto en GHL
+    $contactId = findOrCreateContact($agent['email'], $agent['name']);
+    
+    if (!$contactId) {
+        notifLog("ERROR: No se pudo crear contacto GHL para el agente");
+        return ['success' => false, 'error' => 'Could not create GHL contact for agent'];
+    }
+    
+    $ticketNumber = $ticket['ticket_number'];
+    $title = htmlspecialchars($ticket['title'] ?? 'Sin título');
+    $contactName = htmlspecialchars($ticket['contact_name'] ?? $ticket['ghl_contact_name'] ?? 'Cliente');
+    $safeResponse = htmlspecialchars($clientResponse);
+    
+    $attachmentSection = '';
+    if ($attachmentName) {
+        $attachmentSection = "
+                            <div style='background: #fff7ed; padding: 15px; border-radius: 8px; border-left: 4px solid #fb923c; margin-top: 20px;'>
+                                <p style='margin: 0; font-size: 14px; color: #9a3412;'>
+                                    📎 <strong>Archivo adjunto:</strong> {$attachmentName}
+                                </p>
+                            </div>";
+    }
+    
+    $subject = "📨 Respuesta del cliente - Ticket #{$ticketNumber}";
+    $html = "
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif; background-color: #f4f4f5;'>
+    <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background-color: #f4f4f5; padding: 40px 20px;'>
+        <tr>
+            <td align='center'>
+                <table role='presentation' width='600' cellspacing='0' cellpadding='0' style='background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);'>
+                    <!-- Header -->
+                    <tr>
+                        <td style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;'>
+                            <div style='font-size: 48px; margin-bottom: 15px;'>📨</div>
+                            <h1 style='margin: 0; color: #ffffff; font-size: 28px; font-weight: 700;'>El cliente ha respondido</h1>
+                            <p style='margin: 10px 0 0; color: rgba(255,255,255,0.9); font-size: 16px;'>Información recibida para el ticket</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style='padding: 40px 30px;'>
+                            <p style='margin: 0 0 25px; font-size: 16px; color: #374151;'>Hola <strong>{$agent['name']}</strong>,</p>
+                            <p style='margin: 0 0 30px; font-size: 16px; color: #6b7280; line-height: 1.6;'>El cliente <strong>{$contactName}</strong> ha proporcionado la información solicitada para el siguiente ticket:</p>
+                            
+                            <!-- Ticket Info Box -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='background: #f3f4f6; border-radius: 12px; margin-bottom: 25px;'>
+                                <tr>
+                                    <td style='padding: 20px;'>
+                                        <p style='margin: 0 0 8px; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px;'>Ticket</p>
+                                        <p style='margin: 0; font-size: 20px; color: #667eea; font-weight: 700;'>#{$ticketNumber}</p>
+                                        <p style='margin: 10px 0 0; font-size: 16px; color: #1f2937; font-weight: 600;'>{$title}</p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Client Response -->
+                            <div style='background: #eff6ff; padding: 20px; border-radius: 12px; border-left: 4px solid #3b82f6;'>
+                                <p style='margin: 0 0 12px; font-size: 14px; color: #1d4ed8; font-weight: 600;'>💬 Respuesta del cliente:</p>
+                                <p style='margin: 0; font-size: 15px; color: #374151; line-height: 1.6; white-space: pre-wrap;'>{$safeResponse}</p>
+                            </div>
+                            
+                            {$attachmentSection}
+                            
+                            <p style='margin: 25px 0 0; padding: 15px; background: #f0fdf4; border-radius: 8px; font-size: 14px; color: #15803d; text-align: center;'>
+                                ✅ El ticket ha sido cambiado automáticamente a estado <strong>En Progreso</strong>
+                            </p>
+                            
+                            <!-- CTA Button -->
+                            <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
+                                <tr>
+                                    <td align='center'>
+                                        <a href='https://tickets.srv764777.hstgr.cloud/' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 35px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;'>Ver Ticket</a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style='background-color: #f9fafb; padding: 25px 30px; text-align: center; border-top: 1px solid #e5e7eb;'>
+                            <p style='margin: 0; font-size: 13px; color: #9ca3af;'>Sistema de Tickets • Notificación Automática</p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>";
+    
+    // Enviar email via GHL
+    $emailData = [
+        'type' => 'Email',
+        'contactId' => $contactId,
+        'subject' => $subject,
+        'html' => $html
+    ];
+    
+    $result = ghlApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
+    notifLog("Resultado email a agente: " . json_encode($result));
+    
+    $success = !isset($result['error']);
+    notifLog("FIN: notifyAgentOfClientResponse - Success: " . ($success ? 'YES' : 'NO'));
+    
+    return [
+        'success' => $success,
+        'agentEmail' => $agent['email'],
+        'result' => $result
+    ];
+}
