@@ -305,7 +305,16 @@ function getTicket($pdo, $id) {
             ORDER BY cm.created_at ASC";
     $stmt = $pdo->prepare($sql);
     $stmt->execute([$id]);
-    $ticket['comments'] = $stmt->fetchAll();
+    $comments = $stmt->fetchAll();
+    
+    // Obtener attachments para cada comentario
+    foreach ($comments as &$comment) {
+        $stmtAtt = $pdo->prepare("SELECT * FROM attachments WHERE comment_id = ?");
+        $stmtAtt->execute([$comment['id']]);
+        $comment['attachments'] = $stmtAtt->fetchAll();
+    }
+    unset($comment);
+    $ticket['comments'] = $comments;
     
     // Obtener historial
     $sql = "SELECT al.*, 
@@ -980,15 +989,6 @@ function submitPendingInfo($pdo) {
         }
         
         // Crear comentario con la respuesta del cliente
-        $commentText = "📨 **Respuesta del cliente:**\n\n" . $response;
-        if ($attachmentName) {
-            $commentText .= "\n\n📎 Archivo adjunto: " . $attachmentName;
-        }
-        if ($attachmentPath) {
-            $commentText .= "\n\n🔗 [Ver archivo](/" . $attachmentPath . ")";
-        }
-        
-        // Obtener nombre del contacto
         $contactName = $ticket['contact_name'] ?? $ticket['ghl_contact_name'] ?? 'Cliente';
         $contactEmail = $ticket['contact_email'] ?? $ticket['ghl_contact_email'] ?? null;
         
@@ -996,7 +996,20 @@ function submitPendingInfo($pdo) {
             INSERT INTO comments (ticket_id, user_id, author_name, author_email, content, is_internal, created_at)
             VALUES (?, NULL, ?, ?, ?, 0, NOW())
         ");
-        $stmt->execute([$ticket['id'], $contactName, $contactEmail, $commentText]);
+        $stmt->execute([$ticket['id'], $contactName, $contactEmail, $response]);
+        $commentId = $pdo->lastInsertId();
+        
+        // Si hay archivo adjunto, guardarlo en la tabla attachments
+        if ($attachmentPath && $attachmentName) {
+            $fileType = mime_content_type(__DIR__ . '/../' . $attachmentPath) ?: 'application/octet-stream';
+            $fileSize = filesize(__DIR__ . '/../' . $attachmentPath) ?: 0;
+            
+            $stmt = $pdo->prepare("
+                INSERT INTO attachments (ticket_id, comment_id, filename, original_name, file_type, file_size, uploaded_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, NOW())
+            ");
+            $stmt->execute([$ticket['id'], $commentId, $attachmentPath, $attachmentName, $fileType, $fileSize]);
+        }
         
         // Actualizar ticket: cambiar estado a in_progress y limpiar pending_info_details
         $stmt = $pdo->prepare("

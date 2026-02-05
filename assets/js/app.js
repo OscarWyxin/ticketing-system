@@ -1330,7 +1330,29 @@ function renderComments(comments) {
         return '<p style="color: var(--gray-400); text-align: center; padding: 20px;">No hay comentarios aún</p>';
     }
 
-    return comments.map(comment => `
+    return comments.map(comment => {
+        // Renderizar attachments si existen
+        let attachmentsHtml = '';
+        if (comment.attachments && comment.attachments.length > 0) {
+            attachmentsHtml = '<div class="comment-attachments" style="margin-top: 10px;">' +
+                comment.attachments.map(att => {
+                    const isImage = att.file_type && att.file_type.startsWith('image/');
+                    const fileUrl = '/' + att.filename;
+                    if (isImage) {
+                        return `<a href="${fileUrl}" target="_blank" class="comment-attachment-link" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--gray-100); border-radius: 6px; text-decoration: none; color: var(--gray-700); font-size: 0.85rem; margin-right: 8px;">
+                            <img src="${fileUrl}" alt="${escapeHtml(att.original_name)}" style="max-width: 120px; max-height: 80px; border-radius: 4px;">
+                        </a>`;
+                    } else {
+                        return `<a href="${fileUrl}" target="_blank" class="comment-attachment-link" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--gray-100); border-radius: 6px; text-decoration: none; color: var(--gray-700); font-size: 0.85rem; margin-right: 8px;">
+                            <i class="fas fa-paperclip"></i>
+                            <span>${escapeHtml(att.original_name)}</span>
+                        </a>`;
+                    }
+                }).join('') +
+            '</div>';
+        }
+        
+        return `
         <div class="comment-item ${comment.is_internal ? 'internal' : ''}">
             <img class="comment-avatar" src="https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user_name || comment.author_name || 'U')}&background=6366f1&color=fff" alt="">
             <div class="comment-content">
@@ -1340,9 +1362,10 @@ function renderComments(comments) {
                     ${comment.is_internal ? '<span class="status-badge status-waiting" style="font-size: 0.7rem">Interno</span>' : ''}
                 </div>
                 <div class="comment-text">${escapeHtml(comment.content)}</div>
+                ${attachmentsHtml}
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function renderPagination() {
