@@ -343,9 +343,8 @@ function deletePhase($pdo, $id) {
         return;
     }
     
-    // Desvincular tickets de las actividades antes de eliminar
-    // (los tickets siguen existiendo, solo se rompe la relación)
-    $stmt = $pdo->prepare("UPDATE tickets SET activity_id = NULL WHERE activity_id IN (SELECT id FROM project_activities WHERE phase_id = ?)");
+    // Desvincular actividades de sus tickets (los tickets siguen existiendo)
+    $stmt = $pdo->prepare("UPDATE project_activities SET ticket_id = NULL WHERE phase_id = ?");
     $stmt->execute([$id]);
     
     // Eliminar actividades de la fase
