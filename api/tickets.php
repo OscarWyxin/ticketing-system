@@ -984,12 +984,19 @@ function submitPendingInfo($pdo) {
         if ($attachmentName) {
             $commentText .= "\n\n📎 Archivo adjunto: " . $attachmentName;
         }
+        if ($attachmentPath) {
+            $commentText .= "\n\n🔗 [Ver archivo](/" . $attachmentPath . ")";
+        }
+        
+        // Obtener nombre del contacto
+        $contactName = $ticket['contact_name'] ?? $ticket['ghl_contact_name'] ?? 'Cliente';
+        $contactEmail = $ticket['contact_email'] ?? $ticket['ghl_contact_email'] ?? null;
         
         $stmt = $pdo->prepare("
-            INSERT INTO ticket_comments (ticket_id, user_id, comment, is_internal, attachment_path, created_at)
-            VALUES (?, NULL, ?, 0, ?, NOW())
+            INSERT INTO comments (ticket_id, user_id, author_name, author_email, content, is_internal, created_at)
+            VALUES (?, NULL, ?, ?, ?, 0, NOW())
         ");
-        $stmt->execute([$ticket['id'], $commentText, $attachmentPath]);
+        $stmt->execute([$ticket['id'], $contactName, $contactEmail, $commentText]);
         
         // Actualizar ticket: cambiar estado a in_progress y limpiar pending_info_details
         $stmt = $pdo->prepare("
