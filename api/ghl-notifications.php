@@ -337,7 +337,7 @@ function getClientEmailTemplate($type, $data, $contactName) {
     $title = htmlspecialchars($data['title'] ?? 'Sin título');
     $description = nl2br(htmlspecialchars($data['description'] ?? ''));
     $priority = $data['priority'] ?? 'medium';
-    $trackingLink = $data['tracking_link'] ?? '#';
+    $trackingLink = $data['tracking_link'] ?? $data['link_seguimiento'] ?? '#';
     $deliverable = htmlspecialchars($data['deliverable'] ?? '');
     $assignedName = htmlspecialchars($data['assigned_to_name'] ?? 'Nuestro equipo');
     $pendingInfo = htmlspecialchars($data['informacion_pendiente'] ?? 'Por favor, proporciona la información solicitada.');
