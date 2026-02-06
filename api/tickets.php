@@ -700,28 +700,46 @@ function deleteTicket($pdo, $id) {
 function getStats($pdo) {
     $stats = [];
     
+    // Obtener filtros de fecha
+    $period = $_GET['period'] ?? '';
+    $dateFrom = $_GET['date_from'] ?? '';
+    $dateTo = $_GET['date_to'] ?? '';
+    
+    // Construir filtro de fechas
+    $dateFilter = '';
+    if ($period === 'year') {
+        $dateFilter = " AND YEAR(t.created_at) = YEAR(CURDATE())";
+    } elseif ($period === 'quarter') {
+        $dateFilter = " AND QUARTER(t.created_at) = QUARTER(CURDATE()) AND YEAR(t.created_at) = YEAR(CURDATE())";
+    } elseif ($period === 'month') {
+        $dateFilter = " AND MONTH(t.created_at) = MONTH(CURDATE()) AND YEAR(t.created_at) = YEAR(CURDATE())";
+    } elseif ($dateFrom && $dateTo) {
+        $dateFilter = " AND t.created_at >= '$dateFrom' AND t.created_at <= '$dateTo 23:59:59'";
+    }
+    
     // Filtro base: excluir backlog para consistencia con la lista
-    $baseFilter = "WHERE (backlog = FALSE OR backlog IS NULL)";
+    $baseFilter = "WHERE (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter;
+    $baseFilterSimple = "WHERE (backlog = FALSE OR backlog IS NULL)" . str_replace('t.', '', $dateFilter);
     
     // Por estado (solo tickets no-backlog)
-    $stmt = $pdo->query("SELECT status, COUNT(*) as count FROM tickets $baseFilter GROUP BY status");
+    $stmt = $pdo->query("SELECT status, COUNT(*) as count FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " GROUP BY status");
     $stats['by_status'] = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
     // Por prioridad (solo tickets no-backlog)
-    $stmt = $pdo->query("SELECT priority, COUNT(*) as count FROM tickets $baseFilter GROUP BY priority");
+    $stmt = $pdo->query("SELECT priority, COUNT(*) as count FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " GROUP BY priority");
     $stats['by_priority'] = $stmt->fetchAll(PDO::FETCH_KEY_PAIR);
     
     // Totales (solo tickets no-backlog)
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple));
     $stats['total'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND status IN ('open', 'in_progress', 'waiting')");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " AND status IN ('open', 'in_progress', 'waiting')");
     $stats['open'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " AND created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
     $stats['last_7_days'] = (int)$stmt->fetchColumn();
     
-    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets $baseFilter AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stats['last_30_days'] = (int)$stmt->fetchColumn();
     
     // Total en backlog (para referencia)
@@ -731,11 +749,62 @@ function getStats($pdo) {
     // Por categoría (solo tickets no-backlog)
     $stmt = $pdo->query("SELECT c.name, COUNT(t.id) as count 
                          FROM categories c 
-                         LEFT JOIN tickets t ON c.id = t.category_id AND (t.backlog = FALSE OR t.backlog IS NULL)
+                         LEFT JOIN tickets t ON c.id = t.category_id AND (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
                          GROUP BY c.id ORDER BY count DESC");
     $stats['by_category'] = $stmt->fetchAll();
     
-    // Tiempo promedio de resoluciÃ³n (Ãºltimos 30 dÃ­as)
+    // ========== NUEVO: Stats por Agente (Responsable) ==========
+    try {
+        $agentQuery = "
+            SELECT 
+                u.name as agent_name,
+                u.id as agent_id,
+                SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END) as open_count,
+                SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                SUM(CASE WHEN t.status = 'waiting' THEN 1 ELSE 0 END) as waiting,
+                SUM(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 ELSE 0 END) as resolved,
+                COUNT(t.id) as total
+            FROM users u
+            LEFT JOIN tickets t ON u.id = t.assigned_to 
+                AND (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
+            WHERE u.role IN ('admin', 'agent')
+            GROUP BY u.id, u.name
+            HAVING total > 0
+            ORDER BY total DESC
+        ";
+        $stmt = $pdo->query($agentQuery);
+        $stats['by_agent'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['by_agent_error'] = $e->getMessage();
+        $stats['by_agent'] = [];
+    }
+    
+    // ========== NUEVO: Stats por Proyecto ==========
+    try {
+        $projectQuery = "
+            SELECT 
+                p.name as project_name,
+                p.id as project_id,
+                SUM(CASE WHEN t.status = 'open' THEN 1 ELSE 0 END) as open_count,
+                SUM(CASE WHEN t.status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                SUM(CASE WHEN t.status = 'waiting' THEN 1 ELSE 0 END) as waiting,
+                SUM(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 ELSE 0 END) as resolved,
+                COUNT(t.id) as total
+            FROM projects p
+            LEFT JOIN tickets t ON p.id = t.project_id 
+                AND (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
+            GROUP BY p.id, p.name
+            HAVING total > 0
+            ORDER BY total DESC
+        ";
+        $stmt = $pdo->query($projectQuery);
+        $stats['by_project'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['by_project_error'] = $e->getMessage();
+        $stats['by_project'] = [];
+    }
+    
+    // Tiempo promedio de resolución (últimos 30 días)
     $stmt = $pdo->query("SELECT AVG(TIMESTAMPDIFF(HOUR, created_at, resolved_at)) as avg_hours
                          FROM tickets 
                          WHERE resolved_at IS NOT NULL 

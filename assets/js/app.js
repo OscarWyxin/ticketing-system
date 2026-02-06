@@ -326,9 +326,19 @@ async function syncWithGHL() {
 window.syncWithGHL = syncWithGHL;
 window.testGHLConnection = testGHLConnection;
 
-async function loadStats() {
+// Variables globales para las gráficas
+let chartByAgent = null;
+let chartByProject = null;
+
+async function loadStats(filters = {}) {
     try {
-        const response = await apiCall(`${TICKETS_API}?action=stats`);
+        // Construir URL con filtros
+        const params = new URLSearchParams({ action: 'stats' });
+        if (filters.period) params.append('period', filters.period);
+        if (filters.date_from) params.append('date_from', filters.date_from);
+        if (filters.date_to) params.append('date_to', filters.date_to);
+        
+        const response = await apiCall(`${TICKETS_API}?${params}`);
         if (response.success) {
             state.stats = response.data;
             renderStats();
@@ -337,6 +347,102 @@ async function loadStats() {
         console.error('Error loading stats:', error);
     }
 }
+
+// Función para filtrar el dashboard por período
+function filterDashboard() {
+    const periodSelect = document.getElementById('dashboard-period-filter');
+    const customRange = document.getElementById('custom-date-range');
+    const filterBadge = document.getElementById('active-filter-badge');
+    const filterText = document.getElementById('active-filter-text');
+    const period = periodSelect.value;
+    
+    // Mostrar/ocultar fechas personalizadas
+    if (period === 'custom') {
+        customRange.style.display = 'flex';
+        return; // Esperar a que el usuario haga clic en "Aplicar"
+    } else {
+        customRange.style.display = 'none';
+    }
+    
+    const filters = {};
+    let filterLabel = '';
+    
+    if (period === 'year') {
+        filters.period = period;
+        filterLabel = 'Este año';
+    } else if (period === 'quarter') {
+        filters.period = period;
+        filterLabel = 'Este trimestre';
+    } else if (period === 'month') {
+        filters.period = period;
+        filterLabel = 'Este mes';
+    }
+    
+    // Mostrar/ocultar badge de filtro activo
+    if (filterLabel && filterBadge) {
+        filterText.textContent = filterLabel;
+        filterBadge.style.display = 'flex';
+    } else if (filterBadge) {
+        filterBadge.style.display = 'none';
+    }
+    
+    loadStats(filters);
+}
+
+// Función para aplicar filtro de fecha personalizada
+function applyCustomDateFilter() {
+    const dateFrom = document.getElementById('date-from').value;
+    const dateTo = document.getElementById('date-to').value;
+    const filterBadge = document.getElementById('active-filter-badge');
+    const filterText = document.getElementById('active-filter-text');
+    
+    if (!dateFrom || !dateTo) {
+        showNotification('Selecciona ambas fechas', 'warning');
+        return;
+    }
+    
+    if (new Date(dateFrom) > new Date(dateTo)) {
+        showNotification('La fecha inicial debe ser anterior a la final', 'warning');
+        return;
+    }
+    
+    const filters = {
+        date_from: dateFrom,
+        date_to: dateTo
+    };
+    
+    // Mostrar badge con rango de fechas
+    if (filterBadge) {
+        filterText.textContent = `${dateFrom} - ${dateTo}`;
+        filterBadge.style.display = 'flex';
+    }
+    
+    loadStats(filters);
+}
+
+// Función para limpiar filtros del dashboard
+function clearDashboardFilter() {
+    const periodSelect = document.getElementById('dashboard-period-filter');
+    const customRange = document.getElementById('custom-date-range');
+    const filterBadge = document.getElementById('active-filter-badge');
+    const dateFrom = document.getElementById('date-from');
+    const dateTo = document.getElementById('date-to');
+    
+    // Resetear todo
+    if (periodSelect) periodSelect.value = '';
+    if (customRange) customRange.style.display = 'none';
+    if (filterBadge) filterBadge.style.display = 'none';
+    if (dateFrom) dateFrom.value = '';
+    if (dateTo) dateTo.value = '';
+    
+    // Cargar stats sin filtros
+    loadStats({});
+}
+
+// Exponer funciones al window
+window.filterDashboard = filterDashboard;
+window.applyCustomDateFilter = applyCustomDateFilter;
+window.clearDashboardFilter = clearDashboardFilter;
 
 async function loadTickets() {
     try {
@@ -517,7 +623,11 @@ function renderStats() {
     // Render category donut chart
     renderCategoryChart();
     
-    // Render agent stats
+    // Render NEW bar charts
+    renderAgentBarChart();
+    renderProjectBarChart();
+    
+    // Render agent stats (tabla resumen)
     renderAgentStats();
     
     // Render client stats
@@ -525,6 +635,194 @@ function renderStats() {
 
     // Render recent tickets
     renderRecentTickets();
+}
+
+// ========== NUEVA GRÁFICA: Tickets por Responsable ==========
+function renderAgentBarChart() {
+    const canvas = document.getElementById('chart-by-agent');
+    console.log('renderAgentBarChart - canvas:', canvas);
+    console.log('renderAgentBarChart - by_agent:', state.stats.by_agent);
+    console.log('renderAgentBarChart - Chart available:', typeof Chart);
+    if (!canvas) {
+        console.log('Canvas not found!');
+        return;
+    }
+    
+    const agents = state.stats.by_agent || [];
+    console.log('renderAgentBarChart - agents count:', agents.length);
+    
+    if (agents.length === 0) {
+        canvas.parentElement.innerHTML = `
+            <div class="empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                <i class="fas fa-user-check" style="font-size: 3rem; opacity: 0.3; margin-bottom: 10px;"></i>
+                <p style="color: var(--gray-400);">Sin datos de agentes</p>
+            </div>
+        `;
+        return;
+    }
+    
+    try {
+    
+    // Destruir gráfica anterior si existe
+    if (chartByAgent) {
+        chartByAgent.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    chartByAgent = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: agents.map(a => a.agent_name),
+            datasets: [
+                {
+                    label: 'Abiertos',
+                    data: agents.map(a => parseInt(a.open_count || 0) + parseInt(a.in_progress || 0)),
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'En Espera',
+                    data: agents.map(a => parseInt(a.waiting || 0)),
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Resueltos',
+                    data: agents.map(a => parseInt(a.resolved || 0)),
+                    backgroundColor: '#22c55e',
+                    borderRadius: 4,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        afterBody: function(context) {
+                            const idx = context[0].dataIndex;
+                            const agent = agents[idx];
+                            return `Total: ${agent.total}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 }
+                }
+            }
+        }
+    });
+    console.log('Chart by agent created successfully');
+    } catch (err) {
+        console.error('Error creating agent chart:', err);
+    }
+}
+
+// ========== NUEVA GRÁFICA: Tickets por Proyecto ==========
+function renderProjectBarChart() {
+    const canvas = document.getElementById('chart-by-project');
+    console.log('renderProjectBarChart - canvas:', canvas);
+    console.log('renderProjectBarChart - by_project:', state.stats.by_project);
+    if (!canvas) return;
+    
+    const projects = state.stats.by_project || [];
+    console.log('renderProjectBarChart - projects count:', projects.length);
+    
+    if (projects.length === 0) {
+        canvas.parentElement.innerHTML = `
+            <div class="empty-state" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                <i class="fas fa-project-diagram" style="font-size: 3rem; opacity: 0.3; margin-bottom: 10px;"></i>
+                <p style="color: var(--gray-400);">Sin datos de proyectos</p>
+            </div>
+        `;
+        return;
+    }
+    
+    // Destruir gráfica anterior si existe
+    if (chartByProject) {
+        chartByProject.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    chartByProject = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: projects.map(p => p.project_name.length > 20 ? p.project_name.substring(0, 20) + '...' : p.project_name),
+            datasets: [
+                {
+                    label: 'Abiertos',
+                    data: projects.map(p => parseInt(p.open_count || 0) + parseInt(p.in_progress || 0)),
+                    backgroundColor: '#3b82f6',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'En Espera',
+                    data: projects.map(p => parseInt(p.waiting || 0)),
+                    backgroundColor: '#f59e0b',
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Resueltos',
+                    data: projects.map(p => parseInt(p.resolved || 0)),
+                    backgroundColor: '#22c55e',
+                    borderRadius: 4,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        title: function(context) {
+                            const idx = context[0].dataIndex;
+                            return projects[idx].project_name;
+                        },
+                        afterBody: function(context) {
+                            const idx = context[0].dataIndex;
+                            const project = projects[idx];
+                            return `Total: ${project.total}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 }
+                }
+            }
+        }
+    });
 }
 
 function renderCategoryChart() {
@@ -597,21 +895,8 @@ function renderAgentStats() {
     const container = document.getElementById('agent-stats');
     if (!container) return;
     
-    // Get agents with ticket counts
-    const agentTickets = {};
-    state.tickets.forEach(ticket => {
-        const agentName = ticket.assigned_to_name || 'Sin asignar';
-        if (!agentTickets[agentName]) {
-            agentTickets[agentName] = { name: agentName, total: 0, open: 0 };
-        }
-        agentTickets[agentName].total++;
-        if (['open', 'in_progress', 'waiting'].includes(ticket.status)) {
-            agentTickets[agentName].open++;
-        }
-    });
-    
-    const agents = Object.values(agentTickets).sort((a, b) => b.total - a.total);
-    const maxTickets = Math.max(...agents.map(a => a.total), 1);
+    // CORREGIDO: Usar datos del backend en lugar de state.tickets
+    const agents = state.stats.by_agent || [];
     
     if (agents.length === 0) {
         container.innerHTML = `
@@ -623,22 +908,37 @@ function renderAgentStats() {
         return;
     }
     
-    container.innerHTML = agents.slice(0, 5).map(agent => `
+    const maxTickets = Math.max(...agents.map(a => parseInt(a.total)), 1);
+    
+    container.innerHTML = agents.slice(0, 6).map(agent => {
+        const open = parseInt(agent.open_count || 0) + parseInt(agent.in_progress || 0);
+        const waiting = parseInt(agent.waiting || 0);
+        const resolved = parseInt(agent.resolved || 0);
+        const total = parseInt(agent.total || 0);
+        
+        return `
         <div class="agent-bar">
             <div class="agent-bar-header">
                 <div class="agent-bar-info">
                     <img class="agent-bar-avatar" 
-                         src="https://ui-avatars.com/api/?name=${encodeURIComponent(agent.name)}&background=6366f1&color=fff&size=28" 
-                         alt="${agent.name}">
-                    <span class="agent-bar-name">${agent.name}</span>
+                         src="https://ui-avatars.com/api/?name=${encodeURIComponent(agent.agent_name)}&background=6366f1&color=fff&size=28" 
+                         alt="${agent.agent_name}">
+                    <span class="agent-bar-name">${agent.agent_name}</span>
                 </div>
-                <span class="agent-bar-count">${agent.total} <small style="color: var(--warning); font-size: 0.75rem;">(${agent.open} abiertos)</small></span>
+                <div class="agent-bar-counts" style="display: flex; gap: 8px; font-size: 0.8rem;">
+                    <span style="color: #3b82f6;" title="Abiertos">${open}</span>
+                    <span style="color: #f59e0b;" title="En espera">${waiting}</span>
+                    <span style="color: #22c55e;" title="Resueltos">${resolved}</span>
+                    <span style="font-weight: 600;">(${total})</span>
+                </div>
             </div>
-            <div class="agent-bar-progress">
-                <div class="agent-bar-fill" style="width: ${(agent.total / maxTickets) * 100}%"></div>
+            <div class="agent-bar-progress" style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--gray-100);">
+                <div style="width: ${(open / total) * 100}%; background: #3b82f6;"></div>
+                <div style="width: ${(waiting / total) * 100}%; background: #f59e0b;"></div>
+                <div style="width: ${(resolved / total) * 100}%; background: #22c55e;"></div>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function renderClientStats() {
