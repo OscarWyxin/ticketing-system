@@ -945,45 +945,36 @@ function renderClientStats() {
     const container = document.getElementById('client-stats');
     if (!container) return;
     
-    // Group tickets by contact/account
-    const clientTickets = {};
-    state.tickets.forEach(ticket => {
-        const clientName = ticket.contact_name || ticket.account_name || 'Interno';
-        if (!clientTickets[clientName]) {
-            clientTickets[clientName] = { name: clientName, total: 0, open: 0 };
-        }
-        clientTickets[clientName].total++;
-        if (['open', 'in_progress'].includes(ticket.status)) {
-            clientTickets[clientName].open++;
-        }
-    });
+    // Usar datos del backend (by_requester) en vez de iterar state.tickets
+    const requesters = state.stats.by_requester || [];
     
-    const clients = Object.values(clientTickets).sort((a, b) => b.total - a.total);
-    
-    if (clients.length === 0) {
+    if (requesters.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="padding: 20px;">
-                <i class="fas fa-building" style="font-size: 2rem; opacity: 0.3;"></i>
-                <p style="margin-top: 10px; color: var(--gray-400);">Sin tickets de clientes</p>
+                <i class="fas fa-user-tie" style="font-size: 2rem; opacity: 0.3;"></i>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin tickets con solicitante</p>
             </div>
         `;
         return;
     }
     
-    container.innerHTML = clients.slice(0, 6).map(client => `
+    container.innerHTML = requesters.slice(0, 6).map(req => {
+        const openCount = parseInt(req.open_count || 0) + parseInt(req.in_progress || 0);
+        const total = parseInt(req.total || 0);
+        return `
         <div class="client-row">
             <div class="client-info">
                 <div class="client-icon">
-                    <i class="fas fa-${client.name === 'Interno' ? 'building' : 'user'}"></i>
+                    <i class="fas fa-user-tie"></i>
                 </div>
-                <span class="client-name">${client.name}</span>
+                <span class="client-name">${req.requester_name}</span>
             </div>
             <div class="client-count">
-                ${client.open > 0 ? `<span class="count-badge has-open">${client.open} abiertos</span>` : ''}
-                <span class="count-badge">${client.total} total</span>
+                ${openCount > 0 ? `<span class="count-badge has-open">${openCount} abiertos</span>` : ''}
+                <span class="count-badge">${total} total</span>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 function renderRecentTickets() {
@@ -3594,12 +3585,12 @@ async function populateActivitySelects() {
         try {
             const response = await apiCall(`${HELPERS_API}?action=users`);
             if (response.success && response.data) {
-                contactSelect.innerHTML = '<option value="">Seleccionar contacto...</option>' +
+                contactSelect.innerHTML = '<option value="">Seleccionar solicitante...</option>' +
                     response.data.map(u => `<option value="${u.id}">${escapeHtml(u.name)}</option>`).join('');
             }
         } catch (error) {
             console.error('Error cargando contactos:', error);
-            contactSelect.innerHTML = '<option value="">Seleccionar contacto...</option>';
+            contactSelect.innerHTML = '<option value="">Seleccionar solicitante...</option>';
         }
     }
     

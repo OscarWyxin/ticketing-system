@@ -753,7 +753,11 @@ function getStats($pdo) {
                          GROUP BY c.id ORDER BY count DESC");
     $stats['by_category'] = $stmt->fetchAll();
     
-    // ========== Stats por Asignatario (cualquier usuario con tickets) ==========
+    // ========== Stats por Responsable (excluyendo solicitantes internos) ==========
+    // Solicitantes internos identificados por nombre (funciona en cualquier entorno)
+    $excludeNames = ['Alfonso Bello', 'Alicia Urdiales Ramos', 'Alicia Urdiales', 'Angel Aparicio'];
+    $excludePlaceholders = implode(',', array_fill(0, count($excludeNames), '?'));
+    
     try {
         $agentQuery = "
             SELECT 
@@ -766,15 +770,40 @@ function getStats($pdo) {
                 COUNT(t.id) as total
             FROM tickets t
             INNER JOIN users u ON u.id = t.assigned_to
-            WHERE (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
+            WHERE (t.backlog = FALSE OR t.backlog IS NULL)
+            AND u.name NOT IN ($excludePlaceholders)" . $dateFilter . "
             GROUP BY u.id, u.name
             ORDER BY total DESC
         ";
-        $stmt = $pdo->query($agentQuery);
+        $stmt = $pdo->prepare($agentQuery);
+        $stmt->execute($excludeNames);
         $stats['by_agent'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         $stats['by_agent_error'] = $e->getMessage();
         $stats['by_agent'] = [];
+    }
+    
+    // ========== Stats por Solicitante interno ==========
+    try {
+        $requesterQuery = "
+            SELECT 
+                contact_name as requester_name,
+                SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open_count,
+                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+                SUM(CASE WHEN status = 'waiting' THEN 1 ELSE 0 END) as waiting,
+                SUM(CASE WHEN status IN ('resolved', 'closed') THEN 1 ELSE 0 END) as resolved,
+                COUNT(id) as total
+            FROM tickets
+            WHERE (backlog = FALSE OR backlog IS NULL)
+            AND contact_name IS NOT NULL AND contact_name != ''" . str_replace('t.', '', $dateFilter) . "
+            GROUP BY contact_name
+            ORDER BY total DESC
+        ";
+        $stmt = $pdo->query($requesterQuery);
+        $stats['by_requester'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['by_requester_error'] = $e->getMessage();
+        $stats['by_requester'] = [];
     }
     
     // ========== NUEVO: Stats por Proyecto ==========
