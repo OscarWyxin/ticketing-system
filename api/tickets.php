@@ -753,7 +753,7 @@ function getStats($pdo) {
                          GROUP BY c.id ORDER BY count DESC");
     $stats['by_category'] = $stmt->fetchAll();
     
-    // ========== NUEVO: Stats por Agente (Responsable) ==========
+    // ========== Stats por Asignatario (cualquier usuario con tickets) ==========
     try {
         $agentQuery = "
             SELECT 
@@ -764,12 +764,10 @@ function getStats($pdo) {
                 SUM(CASE WHEN t.status = 'waiting' THEN 1 ELSE 0 END) as waiting,
                 SUM(CASE WHEN t.status IN ('resolved', 'closed') THEN 1 ELSE 0 END) as resolved,
                 COUNT(t.id) as total
-            FROM users u
-            LEFT JOIN tickets t ON u.id = t.assigned_to 
-                AND (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
-            WHERE u.role IN ('admin', 'agent')
+            FROM tickets t
+            INNER JOIN users u ON u.id = t.assigned_to
+            WHERE (t.backlog = FALSE OR t.backlog IS NULL)" . $dateFilter . "
             GROUP BY u.id, u.name
-            HAVING total > 0
             ORDER BY total DESC
         ";
         $stmt = $pdo->query($agentQuery);
