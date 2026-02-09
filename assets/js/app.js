@@ -630,8 +630,9 @@ function renderStats() {
     // Render agent stats (tabla resumen)
     renderAgentStats();
     
-    // Render client stats
-    renderClientStats();
+    // Render requester stats (interno y externo)
+    renderInternalRequesterStats();
+    renderExternalRequesterStats();
 
     // Render recent tickets
     renderRecentTickets();
@@ -941,18 +942,52 @@ function renderAgentStats() {
     `}).join('');
 }
 
-function renderClientStats() {
-    const container = document.getElementById('client-stats');
+function renderInternalRequesterStats() {
+    const container = document.getElementById('internal-requester-stats');
     if (!container) return;
     
-    // Usar datos del backend (by_requester) en vez de iterar state.tickets
-    const requesters = state.stats.by_requester || [];
+    const requesters = state.stats.by_internal_requester || [];
+    
+    if (requesters.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <i class="fas fa-building" style="font-size: 2rem; opacity: 0.3;"></i>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin tickets de solicitantes internos</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = requesters.slice(0, 6).map(req => {
+        const openCount = parseInt(req.open_count || 0) + parseInt(req.in_progress || 0);
+        const total = parseInt(req.total || 0);
+        return `
+        <div class="client-row">
+            <div class="client-info">
+                <div class="client-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <span class="client-name">${req.requester_name}</span>
+            </div>
+            <div class="client-count">
+                ${openCount > 0 ? `<span class="count-badge has-open">${openCount} abiertos</span>` : ''}
+                <span class="count-badge">${total} total</span>
+            </div>
+        </div>
+    `}).join('');
+}
+
+function renderExternalRequesterStats() {
+    const container = document.getElementById('external-requester-stats');
+    if (!container) return;
+    
+    const requesters = state.stats.by_external_requester || [];
     
     if (requesters.length === 0) {
         container.innerHTML = `
             <div class="empty-state" style="padding: 20px;">
                 <i class="fas fa-user-tie" style="font-size: 2rem; opacity: 0.3;"></i>
-                <p style="margin-top: 10px; color: var(--gray-400);">Sin tickets con solicitante</p>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin tickets de solicitantes externos</p>
             </div>
         `;
         return;
