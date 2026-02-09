@@ -1101,6 +1101,11 @@ function renderTickets() {
                 </td>
                 <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
                 <td>
+                    ${ticket.due_date ? 
+                        `<span style="color: ${new Date(ticket.due_date) < new Date() ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
+                        '<span style="color: var(--gray-400)">—</span>'}
+                </td>
+                <td>
                     <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
                         <i class="fas fa-eye"></i>
                     </button>
@@ -1276,6 +1281,11 @@ function renderBacklogTickets(tickets, type = 'consultoria', isHistory = false, 
                         '<span style="color: var(--gray-400)">—</span>'}
                 </td>
                 <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
+                <td>
+                    ${ticket.due_date ? 
+                        `<span style="color: ${new Date(ticket.due_date) < new Date() ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
+                        '<span style="color: var(--gray-400)">—</span>'}
+                </td>
                 ${actionsColumn}
             </tr>
         `}).join('');
