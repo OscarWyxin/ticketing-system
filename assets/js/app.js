@@ -3000,6 +3000,7 @@ function renderAgentDashboard(agent, stats, tickets) {
                                 <th>Prioridad</th>
                                 <th>Categoría</th>
                                 <th>Creado</th>
+                                <th>F. Máxima</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -3016,13 +3017,14 @@ function renderAgentDashboard(agent, stats, tickets) {
                                     <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
                                     <td>${t.category_name || '-'}</td>
                                     <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
+                                    <td>${t.due_date ? `<span style="color: ${new Date(t.due_date) < new Date() ? 'var(--danger)' : 'inherit'}">${new Date(t.due_date).toLocaleDateString('es-ES')}</span>` : '—'}</td>
                                     <td>
                                         <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
                                             <i class="fas fa-eye"></i>
                                         </button>
                                     </td>
                                 </tr>
-                            `).join('') : '<tr><td colspan="7" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'}
+                            `).join('') : '<tr><td colspan="8" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'}
                         </tbody>
                     </table>
                 </div>
