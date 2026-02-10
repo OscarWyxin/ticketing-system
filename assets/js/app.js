@@ -1087,7 +1087,7 @@ function renderTickets() {
                     <strong>${escapeHtml(ticket.title)}</strong>
                     ${ticket.contact_name ? `<br><small style="color: var(--gray-500)">${escapeHtml(ticket.contact_name)}</small>` : ''}
                 </td>
-                <td><span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span></td>
+                <td><span class="status-badge status-${ticket.status}">${getStatusLabel(ticket.status)}</span>${getOverdueBadge(ticket)}</td>
                 <td><span class="priority-badge ${ticket.priority}">${getPriorityLabel(ticket.priority)}</span></td>
                 <td>
                     ${ticket.category_name ? 
@@ -2652,6 +2652,21 @@ function getDeliveryTime(ticket) {
     }
 }
 
+// Verifica si un ticket está en retraso
+function isOverdue(ticket) {
+    if (!ticket.due_date) return false;
+    if (['resolved', 'closed'].includes(ticket.status)) return false;
+    return new Date(ticket.due_date) < new Date();
+}
+
+// Genera badge de retraso si aplica
+function getOverdueBadge(ticket) {
+    if (isOverdue(ticket)) {
+        return ' <span style="background: var(--danger); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 4px;">EN RETRASO</span>';
+    }
+    return '';
+}
+
 function formatDateTime(dateStr) {
     if (!dateStr) return '';
     const date = new Date(dateStr);
@@ -3038,7 +3053,7 @@ function renderAgentDashboard(agent, stats, tickets) {
                                     <td>
                                         <span class="status-badge status-${t.status}">
                                             ${t.status.replace('_', ' ')}
-                                        </span>
+                                        </span>${getOverdueBadge(t)}
                                     </td>
                                     <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
                                     <td>${t.category_name || '-'}</td>
