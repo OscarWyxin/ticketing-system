@@ -1699,36 +1699,19 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
     $closureDate = $closureData['closure_date'] ?? date('Y-m-d');
     $summary = $closureData['summary'] ?? '';
     
-    // Formatear fecha (sin usar strftime que está deprecated en PHP 8+)
+    // Formatear fecha y hora
     $dateFormatted = date('d/m/Y', strtotime($closureDate));
+    $timeFormatted = date('H:i:s');
     
     $results = [
-        'whatsapp' => null,
-        'email' => null
+        'email' => null,
+        'webhook' => null
     ];
     
     // Buscar o crear contacto en GHL
     $contactId = $user['ghl_contact_id'] ?? null;
     if (!$contactId && ($user['phone'] || $user['email'])) {
         $contactId = findOrCreateGHLContact($user['phone'] ?? '', $user['name'], $user['email'] ?? '');
-    }
-    
-    // ========== ENVIAR WHATSAPP ==========
-    if (!empty($user['phone'])) {
-        $phone = preg_replace('/[^0-9]/', '', $user['phone']);
-        
-        if (strlen($phone) >= 10 && $contactId) {
-            // Construir mensaje WhatsApp
-            $message = "📋 *Cierre del día*\n\n";
-            $message .= "👤 *Agente:* {$agentName}\n";
-            $message .= "📅 *Fecha:* {$dateFormatted}\n\n";
-            $message .= "📝 *Resumen:*\n{$summary}";
-            
-            $results['whatsapp'] = sendWhatsAppMessage($pdo, $contactId, $phone, $message);
-            notifLog("Resultado WhatsApp cierre del día: " . json_encode($results['whatsapp']));
-        } else {
-            notifLog("WhatsApp no enviado: teléfono inválido o sin contactId");
-        }
     }
     
     // ========== ENVIAR EMAIL ==========
@@ -1758,6 +1741,14 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
                                 {$dateFormatted}
                             </td>
                         </tr>
+                        <tr>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0;'>
+                                <strong style='color: #64748b;'>🕐 Hora:</strong>
+                            </td>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;'>
+                                {$timeFormatted}
+                            </td>
+                        </tr>
                     </table>
                     
                     <div style='margin-top: 20px;'>
@@ -1784,9 +1775,53 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
         notifLog("Email no enviado: sin email o sin contactId");
     }
     
+    // ========== ENVIAR WEBHOOK ==========
+    $webhookUrl = 'https://services.leadconnectorhq.com/hooks/NYp3yidBIbmOdKtTKdgU/webhook-trigger/71744c33-6451-40e0-a4ee-239d8dca53c2';
+    
+    $webhookPayload = [
+        'agente' => $agentName,
+        'fecha' => $closureDate,
+        'fecha_formateada' => $dateFormatted,
+        'hora' => $timeFormatted,
+        'contenido' => $summary,
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+    
+    try {
+        $ch = curl_init($webhookUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($webhookPayload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        $webhookResponse = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        $results['webhook'] = [
+            'success' => $httpCode >= 200 && $httpCode < 300,
+            'http_code' => $httpCode,
+            'response' => $webhookResponse,
+            'error' => $curlError ?: null
+        ];
+        
+        notifLog("Resultado Webhook cierre del día: HTTP $httpCode - " . $webhookResponse);
+    } catch (Exception $e) {
+        $results['webhook'] = [
+            'success' => false,
+            'error' => $e->getMessage()
+        ];
+        notifLog("Error Webhook cierre del día: " . $e->getMessage());
+    }
+    
     return [
-        'success' => ($results['whatsapp']['success'] ?? false) || !isset($results['email']['error']),
-        'whatsapp' => $results['whatsapp'],
-        'email' => $results['email']
+        'success' => !isset($results['email']['error']) || ($results['webhook']['success'] ?? false),
+        'email' => $results['email'],
+        'webhook' => $results['webhook']
     ];
 }
