@@ -1690,9 +1690,9 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
     $stmt->execute([$userId]);
     $user = $stmt->fetch();
     
-    if (!$user || empty($user['phone'])) {
-        notifLog("Usuario $userId no tiene teléfono configurado");
-        return ['success' => false, 'error' => 'Usuario sin teléfono'];
+    if (!$user) {
+        notifLog("Usuario $userId no encontrado");
+        return ['success' => false, 'error' => 'Usuario no encontrado'];
     }
     
     $agentName = $closureData['agent_name'] ?? 'Agente';
@@ -1701,39 +1701,93 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
     
     // Formatear fecha
     $dateFormatted = date('d/m/Y', strtotime($closureDate));
+    $dateFormattedLong = strftime('%A, %d de %B de %Y', strtotime($closureDate));
     
-    // Construir mensaje WhatsApp
-    $message = "📋 *Cierre del día*\n\n";
-    $message .= "👤 *Agente:* {$agentName}\n";
-    $message .= "📅 *Fecha:* {$dateFormatted}\n\n";
-    $message .= "📝 *Resumen:*\n{$summary}";
-    
-    // Enviar WhatsApp
-    $phone = preg_replace('/[^0-9]/', '', $user['phone']);
-    if (strlen($phone) < 10) {
-        notifLog("Teléfono inválido: {$user['phone']}");
-        return ['success' => false, 'error' => 'Teléfono inválido'];
-    }
+    $results = [
+        'whatsapp' => null,
+        'email' => null
+    ];
     
     // Buscar o crear contacto en GHL
     $contactId = $user['ghl_contact_id'] ?? null;
-    if (!$contactId) {
-        $contactId = findOrCreateGHLContact($user['phone'], $user['name'], $user['email']);
+    if (!$contactId && ($user['phone'] || $user['email'])) {
+        $contactId = findOrCreateGHLContact($user['phone'] ?? '', $user['name'], $user['email'] ?? '');
     }
     
-    if (!$contactId) {
-        notifLog("No se pudo obtener contactId para WhatsApp");
-        return ['success' => false, 'error' => 'No se pudo crear contacto GHL'];
+    // ========== ENVIAR WHATSAPP ==========
+    if (!empty($user['phone'])) {
+        $phone = preg_replace('/[^0-9]/', '', $user['phone']);
+        
+        if (strlen($phone) >= 10 && $contactId) {
+            // Construir mensaje WhatsApp
+            $message = "📋 *Cierre del día*\n\n";
+            $message .= "👤 *Agente:* {$agentName}\n";
+            $message .= "📅 *Fecha:* {$dateFormatted}\n\n";
+            $message .= "📝 *Resumen:*\n{$summary}";
+            
+            $results['whatsapp'] = sendWhatsAppMessage($pdo, $contactId, $phone, $message);
+            notifLog("Resultado WhatsApp cierre del día: " . json_encode($results['whatsapp']));
+        } else {
+            notifLog("WhatsApp no enviado: teléfono inválido o sin contactId");
+        }
     }
     
-    // Enviar mensaje
-    $result = sendWhatsAppMessage($pdo, $contactId, $phone, $message);
-    
-    notifLog("Resultado WhatsApp cierre del día: " . json_encode($result));
+    // ========== ENVIAR EMAIL ==========
+    if (!empty($user['email']) && $contactId) {
+        // Construir HTML del email
+        $emailHtml = "
+        <div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;'>
+            <div style='background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); padding: 30px; text-align: center;'>
+                <h1 style='color: white; margin: 0; font-size: 24px;'>📋 Cierre del Día</h1>
+            </div>
+            <div style='padding: 30px; background: #f8fafc;'>
+                <div style='background: white; border-radius: 8px; padding: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                    <table style='width: 100%; border-collapse: collapse;'>
+                        <tr>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0;'>
+                                <strong style='color: #64748b;'>👤 Agente:</strong>
+                            </td>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;'>
+                                <strong style='color: #1e293b;'>{$agentName}</strong>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0;'>
+                                <strong style='color: #64748b;'>📅 Fecha:</strong>
+                            </td>
+                            <td style='padding: 10px 0; border-bottom: 1px solid #e2e8f0; text-align: right;'>
+                                {$dateFormatted}
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <div style='margin-top: 20px;'>
+                        <strong style='color: #64748b;'>📝 Resumen:</strong>
+                        <div style='margin-top: 10px; padding: 15px; background: #f1f5f9; border-radius: 6px; white-space: pre-wrap; line-height: 1.6;'>" . nl2br(htmlspecialchars($summary)) . "</div>
+                    </div>
+                </div>
+            </div>
+            <div style='padding: 20px; text-align: center; color: #64748b; font-size: 12px;'>
+                Sistema de Tickets - Cierre automático
+            </div>
+        </div>";
+        
+        $emailData = [
+            'type' => 'Email',
+            'contactId' => $contactId,
+            'subject' => "📋 Cierre del día - {$agentName} ({$dateFormatted})",
+            'html' => $emailHtml
+        ];
+        
+        $results['email'] = ghlApiCall('/conversations/messages', 'POST', $emailData, GHL_LOCATION_ID);
+        notifLog("Resultado Email cierre del día: " . json_encode($results['email']));
+    } else {
+        notifLog("Email no enviado: sin email o sin contactId");
+    }
     
     return [
-        'success' => !isset($result['error']),
-        'phone' => $user['phone'],
-        'result' => $result
+        'success' => ($results['whatsapp']['success'] ?? false) || !isset($results['email']['error']),
+        'whatsapp' => $results['whatsapp'],
+        'email' => $results['email']
     ];
 }
