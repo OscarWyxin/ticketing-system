@@ -1699,9 +1699,8 @@ function notifyDailyClosure($pdo, $userId, $closureData) {
     $closureDate = $closureData['closure_date'] ?? date('Y-m-d');
     $summary = $closureData['summary'] ?? '';
     
-    // Formatear fecha
+    // Formatear fecha (sin usar strftime que está deprecated en PHP 8+)
     $dateFormatted = date('d/m/Y', strtotime($closureDate));
-    $dateFormattedLong = strftime('%A, %d de %B de %Y', strtotime($closureDate));
     
     $results = [
         'whatsapp' => null,
