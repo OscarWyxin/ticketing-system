@@ -142,6 +142,9 @@ function listTickets($pdo) {
     } else if ($status === 'resolved') {
         // Solo resueltos y cerrados
         $where[] = "t.status IN ('resolved', 'closed')";
+    } else if ($status === 'overdue') {
+        // Tickets en retraso: due_date < hoy Y no resueltos
+        $where[] = "t.due_date IS NOT NULL AND t.due_date < CURDATE() AND t.status NOT IN ('resolved', 'closed')";
     } else if ($status && $status !== 'all') {
         // Estado específico
         $where[] = "t.status = ?";
@@ -744,6 +747,10 @@ function getStats($pdo) {
     
     $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stats['last_30_days'] = (int)$stmt->fetchColumn();
+    
+    // Tickets en retraso (due_date < hoy Y no resueltos)
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets " . str_replace('t.', '', $baseFilterSimple) . " AND due_date IS NOT NULL AND due_date < CURDATE() AND status NOT IN ('resolved', 'closed')");
+    $stats['overdue'] = (int)$stmt->fetchColumn();
     
     // Total en backlog (para referencia)
     $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE backlog = TRUE");

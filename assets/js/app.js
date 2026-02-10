@@ -2468,14 +2468,17 @@ function updateTicketTabCounts() {
                         (parseInt(byStatus.waiting) || 0);
     const resolvedCount = (parseInt(byStatus.resolved) || 0) + 
                           (parseInt(byStatus.closed) || 0);
+    const overdueCount = stats.overdue || 0;
     const allCount = stats.total || 0;
     
     // Actualizar tabs
     const tabActive = document.getElementById('tab-count-active');
+    const tabOverdue = document.getElementById('tab-count-overdue');
     const tabResolved = document.getElementById('tab-count-resolved');
     const tabAll = document.getElementById('tab-count-all');
     
     if (tabActive) tabActive.textContent = activeCount;
+    if (tabOverdue) tabOverdue.textContent = overdueCount;
     if (tabResolved) tabResolved.textContent = resolvedCount;
     if (tabAll) tabAll.textContent = allCount;
 }
