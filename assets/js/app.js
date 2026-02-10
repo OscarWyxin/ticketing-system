@@ -1105,6 +1105,7 @@ function renderTickets() {
                         `<span style="color: ${new Date(ticket.due_date) < new Date() ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
                         '<span style="color: var(--gray-400)">—</span>'}
                 </td>
+                <td>${getDeliveryTime(ticket)}</td>
                 <td>
                     <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); loadTicketDetail(${ticket.id})">
                         <i class="fas fa-eye"></i>
@@ -2627,6 +2628,30 @@ function formatDate(dateStr) {
     });
 }
 
+// Calcula tiempo de entrega: resolved_at - due_date
+function getDeliveryTime(ticket) {
+    // Solo mostrar si el ticket está resuelto y tiene fecha máxima
+    if (!ticket.resolved_at || !ticket.due_date) {
+        return '<span style="color: var(--gray-400)">—</span>';
+    }
+    
+    const resolvedDate = new Date(ticket.resolved_at);
+    const dueDate = new Date(ticket.due_date);
+    const diffTime = resolvedDate - dueDate;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+        // Entregado antes
+        return `<span style="color: var(--success)">${diffDays}d</span>`;
+    } else if (diffDays === 0) {
+        // Entregado el mismo día
+        return `<span style="color: var(--success)">0d</span>`;
+    } else {
+        // Entregado tarde
+        return `<span style="color: var(--danger)">+${diffDays}d</span>`;
+    }
+}
+
 function formatDateTime(dateStr) {
     if (!dateStr) return '';
     const date = new Date(dateStr);
@@ -3001,6 +3026,7 @@ function renderAgentDashboard(agent, stats, tickets) {
                                 <th>Categoría</th>
                                 <th>Creado</th>
                                 <th>F. Máxima</th>
+                                <th>T. Entrega</th>
                                 <th>Acciones</th>
                             </tr>
                         </thead>
@@ -3018,13 +3044,14 @@ function renderAgentDashboard(agent, stats, tickets) {
                                     <td>${t.category_name || '-'}</td>
                                     <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
                                     <td>${t.due_date ? `<span style="color: ${new Date(t.due_date) < new Date() ? 'var(--danger)' : 'inherit'}">${new Date(t.due_date).toLocaleDateString('es-ES')}</span>` : '—'}</td>
+                                    <td>${getDeliveryTime(t)}</td>
                                     <td>
                                         <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
                                             <i class="fas fa-eye"></i>
                                         </button>
                                     </td>
                                 </tr>
-                            `).join('') : '<tr><td colspan="8" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'}
+                            `).join('') : '<tr><td colspan="9" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'
                         </tbody>
                     </table>
                 </div>
