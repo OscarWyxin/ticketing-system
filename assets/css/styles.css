@@ -3092,3 +3092,138 @@ textarea.form-control {
         height: 50px;
     }
 }
+
+/* =====================================================
+   HISTORIAL DE CIERRES DEL DÍA
+   ===================================================== */
+
+.closures-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.closure-card {
+    background: white;
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--primary);
+    transition: var(--transition);
+}
+
+.closure-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+.closure-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+}
+
+.closure-agent {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.closure-agent img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+}
+
+.closure-agent-info h4 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--gray-800);
+}
+
+.closure-agent-info span {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+}
+
+.closure-date {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+}
+
+.closure-date .date {
+    font-weight: 600;
+    color: var(--gray-700);
+}
+
+.closure-date .time {
+    font-size: 0.85rem;
+    color: var(--gray-500);
+}
+
+.closure-summary {
+    background: var(--gray-50);
+    padding: 15px;
+    border-radius: var(--radius-md);
+    color: var(--gray-700);
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.closure-notification {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--gray-200);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+}
+
+.closure-notification.success {
+    color: var(--success);
+}
+
+.closure-notification.failed {
+    color: var(--danger);
+}
+
+/* Tabs principales del agente */
+.agent-main-tabs {
+    display: flex;
+    gap: 0;
+    background: white;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    overflow: hidden;
+}
+
+.agent-main-tab {
+    flex: 1;
+    padding: 14px 20px;
+    border: none;
+    background: var(--gray-100);
+    color: var(--gray-600);
+    font-weight: 500;
+    cursor: pointer;
+    transition: var(--transition);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.agent-main-tab:hover {
+    background: var(--gray-200);
+}
+
+.agent-main-tab.active {
+    background: white;
+    color: var(--primary);
+    border-bottom: 2px solid var(--primary);
+}
+
+.agent-main-tab i {
+    font-size: 1rem;
+}

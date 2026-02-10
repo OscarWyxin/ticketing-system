@@ -1819,6 +1819,9 @@ function showView(view) {
         loadBacklogTickets('consultoria');
     } else if (view === 'backlog-aib') {
         loadBacklogTickets('aib');
+    } else if (view === 'closures-history') {
+        populateClosureAgentFilter();
+        loadClosuresHistory();
     } else if (view === 'open') {
         state.filters = { ...state.filters, status: 'open' };
         document.getElementById('filter-status').value = 'open';
@@ -2933,7 +2936,14 @@ function renderAgentDashboard(agent, stats, tickets) {
         return icons[priority] || '⚪';
     };
 
+    const escapedAgentName = (agent.name || '').replace(/'/g, "\\'");
+    
     let html = `
+        <div class="agent-header-actions" style="display: flex; justify-content: flex-end; margin-bottom: 20px;">
+            <button class="btn btn-primary" onclick="openDailyClosureModal(${agent.id}, '${escapedAgentName}')">
+                <i class="fas fa-clipboard-check"></i> Cierre del día
+            </button>
+        </div>
         <div class="agent-stats-grid">
             <div class="stat-card">
                 <div class="stat-icon" style="background-color: #6366f1;">
@@ -3013,65 +3023,88 @@ function renderAgentDashboard(agent, stats, tickets) {
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h3><i class="fas fa-tasks"></i> Tickets Asignados</h3>
-            </div>
-            <div class="card-body">
-                <!-- Tabs de estado para agente -->
-                <div class="agent-status-tabs">
-                    <button class="agent-tab ${state.agentStatusTab === 'active' ? 'active' : ''}" onclick="filterAgentTickets('active', '${agent.email}')">
-                        <span>Activos</span>
-                        <span class="tab-badge">${stats.open || 0}</span>
-                    </button>
-                    <button class="agent-tab ${state.agentStatusTab === 'resolved' ? 'active' : ''}" onclick="filterAgentTickets('resolved', '${agent.email}')">
-                        <span>Resueltos</span>
-                        <span class="tab-badge">${stats.resolved || 0}</span>
-                    </button>
-                    <button class="agent-tab ${state.agentStatusTab === 'all' ? 'active' : ''}" onclick="filterAgentTickets('all', '${agent.email}')">
-                        <span>Todos</span>
-                        <span class="tab-badge">${stats.total || 0}</span>
-                    </button>
-                </div>
-                <div class="agent-tickets-table">
-                    <table class="tickets-table">
-                        <thead>
-                            <tr>
-                                <th>Ticket</th>
-                                <th>Asunto</th>
-                                <th>Estado</th>
-                                <th>Prioridad</th>
-                                <th>Categoría</th>
-                                <th>Creado</th>
-                                <th>F. Máxima</th>
-                                <th>T. Entrega</th>
-                                <th>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${tickets.length > 0 ? tickets.map(t => `
-                                <tr class="status-${t.status}">
-                                    <td class="ticket-cell"><strong>${t.ticket_number}</strong></td>
-                                    <td>${t.title}</td>
-                                    <td>
-                                        <span class="status-badge status-${t.status}">
-                                            ${t.status.replace('_', ' ')}
-                                        </span>${getOverdueBadge(t)}
-                                    </td>
-                                    <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
-                                    <td>${t.category_name || '-'}</td>
-                                    <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
-                                    <td>${t.due_date ? `<span style="color: ${new Date(t.due_date) < new Date() ? 'var(--danger)' : 'inherit'}">${new Date(t.due_date).toLocaleDateString('es-ES')}</span>` : '—'}</td>
-                                    <td>${getDeliveryTime(t)}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
-                                    </td>
+        <!-- Tabs principales: Tickets | Mis Cierres -->
+        <div class="agent-main-tabs" style="display: flex; gap: 0; margin-bottom: 0; border-bottom: 2px solid var(--gray-200);">
+            <button class="agent-main-tab active" data-tab="tickets" onclick="switchAgentMainTab('tickets', ${agent.id})">
+                <i class="fas fa-tasks"></i> Tickets Asignados
+            </button>
+            <button class="agent-main-tab" data-tab="closures" onclick="switchAgentMainTab('closures', ${agent.id})">
+                <i class="fas fa-clipboard-list"></i> Mis Cierres
+            </button>
+        </div>
+
+        <!-- Contenido Tab Tickets -->
+        <div class="agent-tab-content" id="agent-tab-tickets-${agent.id}">
+            <div class="card" style="border-top-left-radius: 0; border-top-right-radius: 0;">
+                <div class="card-body">
+                    <!-- Tabs de estado para agente -->
+                    <div class="agent-status-tabs">
+                        <button class="agent-tab ${state.agentStatusTab === 'active' ? 'active' : ''}" onclick="filterAgentTickets('active', '${agent.email}')">
+                            <span>Activos</span>
+                            <span class="tab-badge">${stats.open || 0}</span>
+                        </button>
+                        <button class="agent-tab ${state.agentStatusTab === 'resolved' ? 'active' : ''}" onclick="filterAgentTickets('resolved', '${agent.email}')">
+                            <span>Resueltos</span>
+                            <span class="tab-badge">${stats.resolved || 0}</span>
+                        </button>
+                        <button class="agent-tab ${state.agentStatusTab === 'all' ? 'active' : ''}" onclick="filterAgentTickets('all', '${agent.email}')">
+                            <span>Todos</span>
+                            <span class="tab-badge">${stats.total || 0}</span>
+                        </button>
+                    </div>
+                    <div class="agent-tickets-table">
+                        <table class="tickets-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticket</th>
+                                    <th>Asunto</th>
+                                    <th>Estado</th>
+                                    <th>Prioridad</th>
+                                    <th>Categoría</th>
+                                    <th>Creado</th>
+                                    <th>F. Máxima</th>
+                                    <th>T. Entrega</th>
+                                    <th>Acciones</th>
                                 </tr>
-                            `).join('') : '<tr><td colspan="9" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                ${tickets.length > 0 ? tickets.map(t => `
+                                    <tr class="status-${t.status}">
+                                        <td class="ticket-cell"><strong>${t.ticket_number}</strong></td>
+                                        <td>${t.title}</td>
+                                        <td>
+                                            <span class="status-badge status-${t.status}">
+                                                ${t.status.replace('_', ' ')}
+                                            </span>${getOverdueBadge(t)}
+                                        </td>
+                                        <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
+                                        <td>${t.category_name || '-'}</td>
+                                        <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
+                                        <td>${t.due_date ? `<span style="color: ${new Date(t.due_date) < new Date() ? 'var(--danger)' : 'inherit'}">${new Date(t.due_date).toLocaleDateString('es-ES')}</span>` : '—'}</td>
+                                        <td>${getDeliveryTime(t)}</td>
+                                        <td>
+                                            <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                `).join('') : '<tr><td colspan="9" style="text-align: center; color: #999;">No hay tickets asignados</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido Tab Cierres -->
+        <div class="agent-tab-content hidden" id="agent-tab-closures-${agent.id}">
+            <div class="card" style="border-top-left-radius: 0; border-top-right-radius: 0;">
+                <div class="card-body">
+                    <div id="agent-closures-list-${agent.id}">
+                        <div style="text-align: center; padding: 20px; color: var(--gray-500);">
+                            <i class="fas fa-spinner fa-spin"></i> Cargando cierres...
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -3079,6 +3112,29 @@ function renderAgentDashboard(agent, stats, tickets) {
 
     return html;
 }
+
+function switchAgentMainTab(tab, agentId) {
+    console.log('switchAgentMainTab called:', tab, agentId);
+    
+    // Actualizar tabs activos (dentro del contexto del agente actual)
+    document.querySelectorAll('.agent-main-tab').forEach(t => {
+        t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    
+    // Mostrar/ocultar contenido usando IDs únicos por agente
+    const ticketsTab = document.getElementById(`agent-tab-tickets-${agentId}`);
+    const closuresTab = document.getElementById(`agent-tab-closures-${agentId}`);
+    
+    if (ticketsTab) ticketsTab.classList.toggle('hidden', tab !== 'tickets');
+    if (closuresTab) closuresTab.classList.toggle('hidden', tab !== 'closures');
+    
+    // Cargar cierres si es la primera vez
+    if (tab === 'closures' && agentId) {
+        loadAgentClosures(agentId);
+    }
+}
+
+window.switchAgentMainTab = switchAgentMainTab;
 
 window.loadAgentDashboardByEmail = loadAgentDashboardByEmail;
 window.loadTicketDetail = loadTicketDetail;
@@ -3110,6 +3166,329 @@ window.switchBacklogTab = switchBacklogTab;
 window.loadBacklogStats = loadBacklogStats;
 window.loadBacklogHistory = loadBacklogHistory;
 window.loadBacklogPendingReview = loadBacklogPendingReview;
+
+// =====================================================
+// CIERRE DEL DÍA
+// =====================================================
+
+const CLOSURES_API = `${API_BASE}/closures.php`;
+
+function openDailyClosureModal(agentId, agentName) {
+    // Crear modal overlay dinámicamente si no existe
+    let modalOverlay = document.getElementById('modal-overlay-daily-closure');
+    if (!modalOverlay) {
+        modalOverlay = document.createElement('div');
+        modalOverlay.id = 'modal-overlay-daily-closure';
+        modalOverlay.className = 'modal-overlay';
+        modalOverlay.innerHTML = `
+            <div class="modal" style="max-width: 500px;">
+                <div class="modal-header">
+                    <h2><i class="fas fa-clipboard-check"></i> Cierre del día</h2>
+                    <button class="btn-close" onclick="closeDailyClosureModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 15px; color: var(--gray-500);">
+                        <strong id="closure-agent-name"></strong> - ${new Date().toLocaleDateString('es-ES', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'})}
+                    </p>
+                    <div class="form-group">
+                        <label>Resumen del día</label>
+                        <textarea id="closure-summary" class="form-control" rows="6" 
+                            placeholder="Describe las tareas completadas, tickets resueltos, pendientes para mañana, etc."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" onclick="closeDailyClosureModal()">Cancelar</button>
+                    <button class="btn btn-primary" id="btn-submit-closure">
+                        <i class="fas fa-paper-plane"></i> Enviar Cierre
+                    </button>
+                </div>
+            </div>
+        `;
+        // Cerrar al hacer clic fuera
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) closeDailyClosureModal();
+        });
+        document.body.appendChild(modalOverlay);
+    }
+    
+    // Configurar datos
+    document.getElementById('closure-agent-name').textContent = agentName;
+    document.getElementById('closure-summary').value = '';
+    document.getElementById('btn-submit-closure').onclick = () => submitDailyClosure(agentId);
+    
+    // Verificar si ya existe cierre de hoy
+    checkTodayClosure(agentId);
+    
+    // Mostrar modal
+    modalOverlay.classList.add('active');
+}
+
+function closeDailyClosureModal() {
+    const modalOverlay = document.getElementById('modal-overlay-daily-closure');
+    if (modalOverlay) modalOverlay.classList.remove('active');
+}
+
+async function checkTodayClosure(agentId) {
+    try {
+        const response = await fetch(`${CLOSURES_API}?action=get-today&agent_id=${agentId}`);
+        const data = await response.json();
+        
+        if (data.success && data.has_closure) {
+            document.getElementById('closure-summary').value = data.data.summary;
+            showToast('Ya existe un cierre para hoy. Puedes actualizarlo.', 'info');
+        }
+    } catch (error) {
+        console.error('Error checking today closure:', error);
+    }
+}
+
+async function submitDailyClosure(agentId) {
+    const summary = document.getElementById('closure-summary').value.trim();
+    
+    if (!summary) {
+        showToast('Debes escribir un resumen del día', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('btn-submit-closure');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
+    
+    try {
+        const response = await fetch(`${CLOSURES_API}?action=create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                agent_id: agentId,
+                summary: summary
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('✅ Cierre del día enviado correctamente', 'success');
+            closeModal('modal-daily-closure');
+        } else {
+            showToast(data.error || 'Error al enviar el cierre', 'error');
+        }
+    } catch (error) {
+        console.error('Error submitting closure:', error);
+        showToast('Error al enviar el cierre', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Cierre';
+    }
+}
+
+// =====================================================
+// HISTORIAL DE CIERRES
+// =====================================================
+
+async function loadClosuresHistory() {
+    const container = document.getElementById('closures-list');
+    const emptyState = document.getElementById('closures-empty');
+    
+    if (!container) return;
+    
+    container.innerHTML = '<div class="loading" style="text-align: center; padding: 40px; color: var(--gray-500);"><i class="fas fa-spinner fa-spin"></i> Cargando cierres...</div>';
+    if (emptyState) emptyState.classList.add('hidden');
+    
+    // Obtener filtros
+    const agentId = document.getElementById('filter-closure-agent')?.value || '';
+    const dateFrom = document.getElementById('filter-closure-from')?.value || '';
+    const dateTo = document.getElementById('filter-closure-to')?.value || '';
+    
+    // Construir URL con filtros
+    let url = `${CLOSURES_API}?action=list`;
+    if (agentId) url += `&agent_id=${agentId}`;
+    if (dateFrom) url += `&date_from=${dateFrom}`;
+    if (dateTo) url += `&date_to=${dateTo}`;
+    
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (data.success && data.data && data.data.length > 0) {
+            container.innerHTML = data.data.map(closure => renderClosureCard(closure)).join('');
+        } else {
+            container.innerHTML = '';
+            if (emptyState) emptyState.classList.remove('hidden');
+        }
+    } catch (error) {
+        console.error('Error loading closures:', error);
+        container.innerHTML = '<div class="error-state" style="text-align: center; padding: 40px; color: var(--danger);">Error al cargar los cierres</div>';
+    }
+}
+
+function renderClosureCard(closure) {
+    const date = new Date(closure.closure_date);
+    const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    const createdAt = new Date(closure.created_at);
+    const timeFormatted = createdAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    
+    const avatarUrl = closure.agent_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(closure.agent_name)}&background=6366f1&color=fff`;
+    
+    return `
+        <div class="closure-card">
+            <div class="closure-header">
+                <div class="closure-agent">
+                    <img src="${avatarUrl}" alt="${closure.agent_name}">
+                    <div class="closure-agent-info">
+                        <h4>${closure.agent_name}</h4>
+                        <span>${closure.agent_email}</span>
+                    </div>
+                </div>
+                <div class="closure-date">
+                    <span class="date"><i class="fas fa-calendar-day"></i> ${dateFormatted}</span>
+                    <span class="time"><i class="fas fa-clock"></i> Enviado a las ${timeFormatted}</span>
+                </div>
+            </div>
+            <div class="closure-summary">${escapeHtml(closure.summary)}</div>
+        </div>
+    `;
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function loadAgentClosures(agentId) {
+    const container = document.getElementById(`agent-closures-list-${agentId}`);
+    if (!container) {
+        console.log('Container not found for agent:', agentId);
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${CLOSURES_API}?action=list&agent_id=${agentId}&limit=10`);
+        const data = await response.json();
+        
+        if (data.success && data.data && data.data.length > 0) {
+            container.innerHTML = data.data.map(closure => {
+                const date = new Date(closure.closure_date);
+                const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+                const createdAt = new Date(closure.created_at);
+                const timeFormatted = createdAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                const escapedSummary = closure.summary.replace(/'/g, "\\'").replace(/\n/g, "\\n");
+                
+                return `
+                    <div class="closure-card" style="margin-bottom: 16px;">
+                        <div class="closure-header" style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                            <div class="closure-date" style="display: flex; gap: 15px; align-items: center;">
+                                <span class="date" style="font-weight: 600;"><i class="fas fa-calendar-day"></i> ${dateFormatted}</span>
+                                <span class="time" style="color: var(--gray-500); font-size: 0.85rem;"><i class="fas fa-clock"></i> ${timeFormatted}</span>
+                            </div>
+                            <button class="btn btn-sm btn-ghost" onclick="editClosure(${closure.id}, ${agentId}, '${escapedSummary}')" title="Editar cierre">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                        </div>
+                        <div class="closure-summary">${escapeHtml(closure.summary)}</div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 30px; color: var(--gray-400);">
+                    <i class="fas fa-clipboard-list" style="font-size: 2rem; margin-bottom: 10px;"></i>
+                    <p>No hay cierres registrados</p>
+                    <p style="font-size: 0.85rem; margin-top: 5px;">Usa el botón "Cierre del día" para crear uno</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading agent closures:', error);
+        container.innerHTML = '<div style="text-align: center; color: var(--danger);">Error al cargar cierres</div>';
+    }
+}
+
+function editClosure(closureId, agentId, summary) {
+    // Abrir modal con datos precargados
+    let modalOverlay = document.getElementById('modal-overlay-daily-closure');
+    if (!modalOverlay) {
+        // Crear el modal si no existe
+        openDailyClosureModal(agentId, 'Agente');
+        modalOverlay = document.getElementById('modal-overlay-daily-closure');
+    }
+    
+    // Precargar datos
+    document.getElementById('closure-summary').value = summary.replace(/\\n/g, "\n");
+    
+    // Cambiar el botón para actualizar
+    const btn = document.getElementById('btn-submit-closure');
+    btn.onclick = () => updateClosure(closureId, agentId);
+    btn.innerHTML = '<i class="fas fa-save"></i> Actualizar Cierre';
+    
+    // Mostrar modal
+    modalOverlay.classList.add('active');
+}
+
+async function updateClosure(closureId, agentId) {
+    const summary = document.getElementById('closure-summary').value.trim();
+    
+    if (!summary) {
+        showToast('Debes escribir un resumen del día', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('btn-submit-closure');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Actualizando...';
+    
+    try {
+        const response = await fetch(`${CLOSURES_API}?action=update&id=${closureId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('✅ Cierre actualizado correctamente', 'success');
+            closeDailyClosureModal();
+            loadAgentClosures(agentId);
+        } else {
+            showToast(data.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating closure:', error);
+        showToast('Error al actualizar el cierre', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Cierre';
+        btn.onclick = () => submitDailyClosure(agentId);
+    }
+}
+
+window.editClosure = editClosure;
+window.updateClosure = updateClosure;
+
+function clearClosureFilters() {
+    document.getElementById('filter-closure-agent').value = '';
+    document.getElementById('filter-closure-from').value = '';
+    document.getElementById('filter-closure-to').value = '';
+    loadClosuresHistory();
+}
+
+function populateClosureAgentFilter() {
+    const select = document.getElementById('filter-closure-agent');
+    if (!select || !state.agents) return;
+    
+    select.innerHTML = '<option value="">Todos los agentes</option>';
+    state.agents.forEach(agent => {
+        select.innerHTML += `<option value="${agent.id}">${agent.name}</option>`;
+    });
+}
+
+window.openDailyClosureModal = openDailyClosureModal;
+window.closeDailyClosureModal = closeDailyClosureModal;
+window.submitDailyClosure = submitDailyClosure;
+window.loadClosuresHistory = loadClosuresHistory;
+window.loadAgentClosures = loadAgentClosures;
+window.clearClosureFilters = clearClosureFilters;
 
 // =====================================================
 // GESTIÓN DE PROYECTOS

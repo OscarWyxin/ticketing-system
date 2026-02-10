@@ -1678,3 +1678,62 @@ function notifyAgentOfClientResponse($pdo, $ticket, $clientResponse, $attachment
         'result' => $result
     ];
 }
+
+/**
+ * Notificar cierre del día a Alicia por WhatsApp
+ */
+function notifyDailyClosure($pdo, $userId, $closureData) {
+    notifLog("INICIO: notifyDailyClosure para usuario $userId");
+    
+    // Obtener datos del usuario destino (Alicia)
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch();
+    
+    if (!$user || empty($user['phone'])) {
+        notifLog("Usuario $userId no tiene teléfono configurado");
+        return ['success' => false, 'error' => 'Usuario sin teléfono'];
+    }
+    
+    $agentName = $closureData['agent_name'] ?? 'Agente';
+    $closureDate = $closureData['closure_date'] ?? date('Y-m-d');
+    $summary = $closureData['summary'] ?? '';
+    
+    // Formatear fecha
+    $dateFormatted = date('d/m/Y', strtotime($closureDate));
+    
+    // Construir mensaje WhatsApp
+    $message = "📋 *Cierre del día*\n\n";
+    $message .= "👤 *Agente:* {$agentName}\n";
+    $message .= "📅 *Fecha:* {$dateFormatted}\n\n";
+    $message .= "📝 *Resumen:*\n{$summary}";
+    
+    // Enviar WhatsApp
+    $phone = preg_replace('/[^0-9]/', '', $user['phone']);
+    if (strlen($phone) < 10) {
+        notifLog("Teléfono inválido: {$user['phone']}");
+        return ['success' => false, 'error' => 'Teléfono inválido'];
+    }
+    
+    // Buscar o crear contacto en GHL
+    $contactId = $user['ghl_contact_id'] ?? null;
+    if (!$contactId) {
+        $contactId = findOrCreateGHLContact($user['phone'], $user['name'], $user['email']);
+    }
+    
+    if (!$contactId) {
+        notifLog("No se pudo obtener contactId para WhatsApp");
+        return ['success' => false, 'error' => 'No se pudo crear contacto GHL'];
+    }
+    
+    // Enviar mensaje
+    $result = sendWhatsAppMessage($pdo, $contactId, $phone, $message);
+    
+    notifLog("Resultado WhatsApp cierre del día: " . json_encode($result));
+    
+    return [
+        'success' => !isset($result['error']),
+        'phone' => $user['phone'],
+        'result' => $result
+    ];
+}

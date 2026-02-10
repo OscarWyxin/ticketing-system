@@ -44,6 +44,10 @@
                     <span>Backlog AIB</span>
                     <span class="badge" id="badge-backlog-aib">0</span>
                 </a>
+                <a href="#" class="nav-item" data-view="closures-history">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Cierres del día</span>
+                </a>
 
                 <div class="nav-divider">
                     <span>AGENTES</span>
@@ -691,6 +695,48 @@
                 <div id="backlog-aib-empty" class="empty-state hidden">
                     <i class="fas fa-inbox" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
                     <p>No hay tickets en el backlog</p>
+                </div>
+            </section>
+
+            <!-- Closures History View -->
+            <section class="content-section hidden" id="view-closures-history">
+                <div class="section-header">
+                    <h1><i class="fas fa-clipboard-list"></i> Historial de Cierres del Día</h1>
+                </div>
+
+                <!-- Filtros -->
+                <div class="filters-panel" style="margin-bottom: 20px;">
+                    <div class="filters-row">
+                        <div class="filter-group">
+                            <label>Agente</label>
+                            <select id="filter-closure-agent" class="form-select" onchange="loadClosuresHistory()">
+                                <option value="">Todos los agentes</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Desde</label>
+                            <input type="date" id="filter-closure-from" class="form-select" onchange="loadClosuresHistory()">
+                        </div>
+                        <div class="filter-group">
+                            <label>Hasta</label>
+                            <input type="date" id="filter-closure-to" class="form-select" onchange="loadClosuresHistory()">
+                        </div>
+                        <div class="filter-group" style="align-self: flex-end;">
+                            <button class="btn btn-secondary" onclick="clearClosureFilters()">
+                                <i class="fas fa-times"></i> Limpiar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de cierres -->
+                <div class="closures-list" id="closures-list">
+                    <!-- Cierres cargados dinámicamente -->
+                </div>
+
+                <div id="closures-empty" class="empty-state hidden">
+                    <i class="fas fa-clipboard-list" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
+                    <p>No hay cierres registrados</p>
                 </div>
             </section>
 
