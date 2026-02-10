@@ -432,10 +432,10 @@ function createTicket($pdo) {
         
         // Crear asignaciones múltiples para tickets de backlog
         if (!empty($input['backlog'])) {
-            // Asignar a Alfonso (3) como primario y Alicia (14) como secundario
+            // Asignar a Alfonso (3) como primario y Alicia (6) como secundario
             $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role) VALUES (?, ?, ?)");
             $assignStmt->execute([$ticketId, 3, 'primary']);   // Alfonso
-            $assignStmt->execute([$ticketId, 14, 'secondary']); // Alicia
+            $assignStmt->execute([$ticketId, 6, 'secondary']); // Alicia
         } elseif (!empty($input['assigned_to'])) {
             // Para tickets normales, crear asignación primaria
             $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role) VALUES (?, ?, 'primary')");
@@ -454,7 +454,7 @@ function createTicket($pdo) {
         // Notificar si es backlog
         $notificationResult = null;
         if (!empty($input['backlog'])) {
-            // Notificar a Alfonso (3) y Alicia (14) sobre nuevo ticket en backlog
+            // Notificar a Alfonso (3) y Alicia (6) sobre nuevo ticket en backlog
             $ticketData = [
                 'id' => $ticketId,
                 'ticket_number' => $ticketNumber,
@@ -1290,7 +1290,7 @@ function requestReview($pdo, $id) {
         $stmt = $pdo->prepare("UPDATE tickets SET revision_status = 1, deliverable = ?, status = 'waiting', backlog = 1, updated_at = NOW() WHERE id = ?");
         $stmt->execute([$finalDeliverable, $id]);
         
-        // Notificar a Alfonso (3) y Alicia (14)
+        // Notificar a Alfonso (3) y Alicia (6)
         if (function_exists('notifyReviewRequest')) {
             $ticketData = [
                 'id' => $id,
