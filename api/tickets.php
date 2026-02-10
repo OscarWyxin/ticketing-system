@@ -380,6 +380,9 @@ function createTicket($pdo) {
         $prefix = $prefixMap[$workType] ?? 'P';
         $ticketNumber = $prefix . '-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -4));
         
+        // Sincronizar due_date: si no viene, usar max_delivery_date
+        $dueDate = $input['due_date'] ?? $input['max_delivery_date'] ?? null;
+        
         $sql = "INSERT INTO tickets (
                     ticket_number, title, description, status, priority, 
                     category_id, created_by, assigned_to, source, client_id,
@@ -417,7 +420,7 @@ function createTicket($pdo) {
             $input['contact_phone'] ?? null,
             $input['ghl_form_id'] ?? null,
             $input['ghl_contact_id'] ?? null,
-            $input['due_date'] ?? null,
+            $dueDate,
             isset($input['backlog']) ? (int)$input['backlog'] : 0,
             $input['backlog_type'] ?? null
         ]);
