@@ -1581,9 +1581,13 @@ function renderTicketDetail() {
                 </div>
                 <div class="info-row">
                     <span class="label">Categoría</span>
-                    <span class="value">
-                        ${ticket.category_name || '<span style="color: var(--gray-400)">Sin categoría</span>'}
-                    </span>
+                    <select class="form-select" style="width: auto; padding: 6px 10px; font-size: 0.85rem;"
+                            onchange="updateTicketField(${ticket.id}, 'category_id', this.value)">
+                        <option value="">Sin categoría</option>
+                        ${state.categories.map(c => `
+                            <option value="${c.id}" ${ticket.category_id == c.id ? 'selected' : ''}>${c.name}</option>
+                        `).join('')}
+                    </select>
                 </div>
                 <div class="info-row">
                     <span class="label">Asignado a</span>
