@@ -86,9 +86,12 @@ async function init() {
     updateBadges();
     await loadTickets();
     
-    // Restaurar otras vistas (projects, backlog, etc.)
+    // Restaurar vista guardada o mostrar dashboard
     if (savedView && savedView !== 'dashboard' && savedView !== 'ticket-detail') {
         showView(savedView);
+    } else {
+        // Asegurar que dashboard esté visible (empieza hidden para evitar flickering)
+        showView('dashboard');
     }
 }
 

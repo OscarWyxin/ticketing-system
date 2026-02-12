@@ -107,7 +107,7 @@
             </header>
 
             <!-- Dashboard View -->
-            <section class="content-section" id="view-dashboard">
+            <section class="content-section hidden" id="view-dashboard">
                 <div class="section-header">
                     <h1>Dashboard</h1>
                     <div class="header-actions" style="display: flex; gap: 12px; align-items: center;">
@@ -1230,5 +1230,31 @@
     <div class="toast-container" id="toast-container"></div>
 
     <script src="assets/js/app.js"></script>
+    <script>
+        // Restaurar vista guardada inmediatamente para evitar flickering
+        (function() {
+            const savedView = localStorage.getItem('ticketing_currentView');
+            const savedAgentEmail = localStorage.getItem('ticketing_agentEmail');
+            let viewToShow = 'dashboard';
+            
+            if (savedAgentEmail) {
+                // Mapeo de email a nombre corto
+                const map = {
+                    'oscar.calamita@wixyn.com': 'oscar',
+                    'faguerre@abelross.com': 'fiorella',
+                    'victoria.aparicio@conmenospersonal.io': 'victoria',
+                    'andrea@wixyn.com': 'andrea',
+                    'gabriela.carvajal@wixyn.com': 'gabriela'
+                };
+                const short = map[savedAgentEmail];
+                if (short) viewToShow = 'agent-' + short;
+            } else if (savedView) {
+                viewToShow = savedView;
+            }
+            
+            const el = document.getElementById('view-' + viewToShow);
+            if (el) el.classList.remove('hidden');
+        })();
+    </script>
 </body>
 </html>
