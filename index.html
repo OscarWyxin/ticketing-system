@@ -1238,7 +1238,6 @@
             let viewToShow = 'dashboard';
             
             if (savedAgentEmail) {
-                // Mapeo de email a nombre corto
                 const map = {
                     'oscar.calamita@wixyn.com': 'oscar',
                     'faguerre@abelross.com': 'fiorella',
@@ -1252,8 +1251,19 @@
                 viewToShow = savedView;
             }
             
+            // Mostrar la sección correcta
             const el = document.getElementById('view-' + viewToShow);
             if (el) el.classList.remove('hidden');
+            
+            // Actualizar sidebar: quitar active de dashboard, poner en la correcta
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.remove('active');
+                if (savedAgentEmail && item.dataset.agentEmail === savedAgentEmail) {
+                    item.classList.add('active');
+                } else if (!savedAgentEmail && item.dataset.view === viewToShow) {
+                    item.classList.add('active');
+                }
+            });
         })();
     </script>
 </body>
