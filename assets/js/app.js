@@ -608,6 +608,12 @@ function renderStats() {
     document.getElementById('stat-progress').textContent = stats.by_status?.in_progress || 0;
     document.getElementById('stat-resolved').textContent = stats.by_status?.resolved || 0;
     
+    // KPIs de rendimiento
+    document.getElementById('stat-overdue').textContent = stats.overdue || 0;
+    document.getElementById('stat-avg-resolution').textContent = (stats.avg_resolution_hours || 0) + 'h';
+    document.getElementById('stat-sla').textContent = (stats.sla_compliance || 0) + '%';
+    document.getElementById('stat-avg-delay').textContent = (stats.avg_delay_days || 0) + 'd';
+    
     // Actualizar badges de navegación inmediatamente
     updateBadges();
     

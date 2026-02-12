@@ -884,6 +884,35 @@ function getStats($pdo) {
                          AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)");
     $stats['avg_resolution_hours'] = round($stmt->fetchColumn() ?? 0, 1);
     
+    // ========== KPIs de Rendimiento / SLA ==========
+    // Tickets entregados a tiempo (resolved_at <= due_date)
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets 
+                         WHERE resolved_at IS NOT NULL 
+                         AND due_date IS NOT NULL 
+                         AND DATE(resolved_at) <= due_date");
+    $onTime = (int)$stmt->fetchColumn();
+    
+    // Total tickets resueltos con fecha máxima
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets 
+                         WHERE resolved_at IS NOT NULL 
+                         AND due_date IS NOT NULL");
+    $totalWithDue = (int)$stmt->fetchColumn();
+    
+    // % Cumplimiento SLA
+    $stats['sla_compliance'] = $totalWithDue > 0 
+        ? round(($onTime / $totalWithDue) * 100, 1) 
+        : 0;
+    $stats['delivered_on_time'] = $onTime;
+    $stats['delivered_late'] = $totalWithDue - $onTime;
+    
+    // Tiempo medio de retraso (solo tickets entregados tarde, en días)
+    $stmt = $pdo->query("SELECT AVG(DATEDIFF(DATE(resolved_at), due_date)) 
+                         FROM tickets 
+                         WHERE resolved_at IS NOT NULL 
+                         AND due_date IS NOT NULL 
+                         AND DATE(resolved_at) > due_date");
+    $stats['avg_delay_days'] = round($stmt->fetchColumn() ?? 0, 1);
+    
     echo json_encode(['success' => true, 'data' => $stats]);
 }
 
