@@ -2486,6 +2486,10 @@ function updateBadges() {
     
     if (badgeTotal) badgeTotal.textContent = stats.total || 0;
     if (badgeOpen) badgeOpen.textContent = stats.open || 0;
+    
+    // Actualizar badges de backlog en sidebar
+    updateBacklogBadge(stats.backlog_consultoria || 0, 'consultoria');
+    updateBacklogBadge(stats.backlog_aib || 0, 'aib');
 }
 
 function updateTicketTabCounts() {

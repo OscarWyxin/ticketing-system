@@ -756,6 +756,13 @@ function getStats($pdo) {
     $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE backlog = TRUE");
     $stats['backlog_total'] = (int)$stmt->fetchColumn();
     
+    // Backlog por tipo (para badges en sidebar)
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE backlog = TRUE AND backlog_type = 'consultoria' AND status NOT IN ('resolved', 'closed')");
+    $stats['backlog_consultoria'] = (int)$stmt->fetchColumn();
+    
+    $stmt = $pdo->query("SELECT COUNT(*) FROM tickets WHERE backlog = TRUE AND backlog_type = 'aib' AND status NOT IN ('resolved', 'closed')");
+    $stats['backlog_aib'] = (int)$stmt->fetchColumn();
+    
     // Por categoría (solo tickets no-backlog)
     $stmt = $pdo->query("SELECT c.name, COUNT(t.id) as count 
                          FROM categories c 
