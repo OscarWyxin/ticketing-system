@@ -17,6 +17,7 @@ node_modules/
 .env
 .env.local
 .env.production
+VPS_CREDENTIALS.md
 
 # Backup files with potential secrets
 *.bak

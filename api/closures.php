@@ -45,6 +45,8 @@ function createClosure($pdo) {
     
     $agentId = (int)$input['agent_id'];
     $summary = trim($input['summary']);
+    // Usar fecha del cliente si viene, sino calcular con timezone correcto
+    date_default_timezone_set('Europe/Madrid');
     $closureDate = $input['closure_date'] ?? date('Y-m-d');
     
     // Verificar si ya existe cierre para este agente y fecha

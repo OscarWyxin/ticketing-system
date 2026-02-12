@@ -3259,12 +3259,17 @@ async function submitDailyClosure(agentId) {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enviando...';
     
     try {
+        // Enviar fecha local del cliente para evitar desfase por timezone del servidor
+        const today = new Date();
+        const closureDate = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        
         const response = await fetch(`${CLOSURES_API}?action=create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 agent_id: agentId,
-                summary: summary
+                summary: summary,
+                closure_date: closureDate
             })
         });
         
@@ -3326,7 +3331,8 @@ async function loadClosuresHistory() {
 }
 
 function renderClosureCard(closure) {
-    const date = new Date(closure.closure_date);
+    // Agregar T00:00:00 para que se interprete como hora local, no UTC
+    const date = new Date(closure.closure_date + 'T00:00:00');
     const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const createdAt = new Date(closure.created_at);
     const timeFormatted = createdAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
@@ -3372,7 +3378,8 @@ async function loadAgentClosures(agentId) {
         
         if (data.success && data.data && data.data.length > 0) {
             container.innerHTML = data.data.map(closure => {
-                const date = new Date(closure.closure_date);
+                // Agregar T00:00:00 para que se interprete como hora local, no UTC
+                const date = new Date(closure.closure_date + 'T00:00:00');
                 const dateFormatted = date.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
                 const createdAt = new Date(closure.created_at);
                 const timeFormatted = createdAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
