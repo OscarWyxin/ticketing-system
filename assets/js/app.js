@@ -38,7 +38,8 @@ let state = {
     timer: {
         running: false,
         seconds: 0,
-        interval: null
+        interval: null,
+        ticketId: null  // ID del ticket al que pertenece el timer
     }
 };
 
@@ -489,6 +490,17 @@ async function loadTickets() {
 
 async function loadTicketDetail(id) {
     try {
+        // Si hay timer corriendo para OTRO ticket, preguntar antes de cambiar
+        if (state.timer.running && state.timer.ticketId && state.timer.ticketId !== id) {
+            const confirm = window.confirm(
+                `Tienes un timer activo (${formatTimerDisplay(state.timer.seconds)}) para otro ticket.\n\n¿Quieres guardar el tiempo antes de cambiar?`
+            );
+            if (confirm) {
+                await saveTimerForTicket(state.timer.ticketId, state.timer.seconds);
+            }
+            stopTimerClean();
+        }
+        
         const response = await apiCall(`${TICKETS_API}?action=get&id=${id}`);
         if (response.success) {
             state.currentTicket = response.data;
@@ -496,7 +508,10 @@ async function loadTicketDetail(id) {
             localStorage.setItem('ticketing_currentTicketId', id);
             renderTicketDetail();
             showTimerForPuntual();
-            resetTimer();
+            
+            // Restaurar timer si existe para este ticket, si no resetear
+            restoreOrResetTimer(id);
+            
             showView('ticket-detail');
         }
     } catch (error) {
@@ -1960,20 +1975,15 @@ function switchWorkType(type) {
 
 function showTimerForPuntual() {
     const timerDisplay = document.getElementById('timer-display');
-    console.log('showTimerForPuntual called');
-    console.log('Current ticket:', state.currentTicket);
-    console.log('Timer display element:', timerDisplay);
     
     if (state.currentTicket && state.currentTicket.work_type === 'puntual') {
         if (timerDisplay) {
             timerDisplay.style.display = 'block';
-            console.log('Timer shown for Puntual ticket');
         }
         updateTimerDisplay();
     } else {
         if (timerDisplay) {
             timerDisplay.style.display = 'none';
-            console.log('Timer hidden - not a Puntual ticket');
         }
     }
 }
@@ -1986,35 +1996,105 @@ function toggleTimer() {
         state.timer.running = false;
         clearInterval(state.timer.interval);
         btn.innerHTML = '<i class="fas fa-play"></i> Reanudar';
+        // Guardar estado en localStorage
+        saveTimerToStorage();
     } else {
         // Iniciar/reanudar timer
         state.timer.running = true;
+        state.timer.ticketId = state.currentTicket?.id;
         btn.innerHTML = '<i class="fas fa-pause"></i> Pausar';
         
         state.timer.interval = setInterval(() => {
             state.timer.seconds++;
             updateTimerDisplay();
+            // Guardar cada 10 segundos para no perder mucho si cierra
+            if (state.timer.seconds % 10 === 0) {
+                saveTimerToStorage();
+            }
         }, 1000);
     }
 }
 
 function resetTimer() {
-    state.timer.running = false;
-    state.timer.seconds = 0;
-    clearInterval(state.timer.interval);
-    
+    stopTimerClean();
     const btn = document.getElementById('btn-timer');
-    btn.innerHTML = '<i class="fas fa-play"></i> Iniciar';
+    if (btn) btn.innerHTML = '<i class="fas fa-play"></i> Iniciar';
     updateTimerDisplay();
 }
 
+function stopTimerClean() {
+    state.timer.running = false;
+    state.timer.seconds = 0;
+    state.timer.ticketId = null;
+    clearInterval(state.timer.interval);
+    clearTimerFromStorage();
+}
+
 function updateTimerDisplay() {
-    const hours = Math.floor(state.timer.seconds / 3600);
-    const minutes = Math.floor((state.timer.seconds % 3600) / 60);
-    const seconds = state.timer.seconds % 60;
+    const timerElement = document.getElementById('timer-time');
+    if (timerElement) {
+        timerElement.textContent = formatTimerDisplay(state.timer.seconds);
+    }
+}
+
+function formatTimerDisplay(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+// ========== Timer Storage ==========
+function saveTimerToStorage() {
+    if (state.timer.ticketId) {
+        localStorage.setItem('timer_state', JSON.stringify({
+            ticketId: state.timer.ticketId,
+            seconds: state.timer.seconds,
+            running: state.timer.running,
+            savedAt: Date.now()
+        }));
+    }
+}
+
+function clearTimerFromStorage() {
+    localStorage.removeItem('timer_state');
+}
+
+function restoreOrResetTimer(ticketId) {
+    const savedTimer = localStorage.getItem('timer_state');
     
-    const display = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    document.getElementById('timer-time').textContent = display;
+    if (savedTimer) {
+        const timerData = JSON.parse(savedTimer);
+        
+        // Si el timer guardado es para este ticket
+        if (timerData.ticketId === ticketId) {
+            // Calcular tiempo transcurrido si estaba corriendo
+            let restoredSeconds = timerData.seconds;
+            if (timerData.running && timerData.savedAt) {
+                const elapsedSinceLastSave = Math.floor((Date.now() - timerData.savedAt) / 1000);
+                restoredSeconds += elapsedSinceLastSave;
+            }
+            
+            state.timer.seconds = restoredSeconds;
+            state.timer.ticketId = ticketId;
+            state.timer.running = false; // Siempre empieza pausado al restaurar
+            
+            const btn = document.getElementById('btn-timer');
+            if (btn) btn.innerHTML = '<i class="fas fa-play"></i> Reanudar';
+            
+            updateTimerDisplay();
+            showToast(`⏱️ Timer restaurado: ${formatTimerDisplay(restoredSeconds)}`, 'info');
+            return;
+        }
+    }
+    
+    // No hay timer guardado para este ticket, resetear
+    state.timer.seconds = 0;
+    state.timer.ticketId = ticketId;
+    state.timer.running = false;
+    const btn = document.getElementById('btn-timer');
+    if (btn) btn.innerHTML = '<i class="fas fa-play"></i> Iniciar';
+    updateTimerDisplay();
 }
 
 function formatSecondsToTime(totalSeconds) {
@@ -2027,25 +2107,61 @@ function formatSecondsToTime(totalSeconds) {
 
 function saveTimer() {
     if (!state.currentTicket) return;
+    if (state.timer.seconds === 0) {
+        showToast('No hay tiempo para guardar', 'warning');
+        return;
+    }
     
     // Convertir segundos a horas decimales
-    const hoursDecimal = state.timer.seconds / 3600;
+    const newHoursDecimal = state.timer.seconds / 3600;
     
-    // Formato: Xh Ym Zs
-    const hours = Math.floor(state.timer.seconds / 3600);
-    const minutes = Math.floor((state.timer.seconds % 3600) / 60);
-    const seconds = state.timer.seconds % 60;
-    const timeFormat = `${hours}h ${minutes}m ${seconds}s`;
+    // SUMAR al tiempo existente (no reemplazar)
+    const currentHours = parseFloat(state.currentTicket.hours_dedicated || 0);
+    const totalHours = currentHours + newHoursDecimal;
     
-    updateTicketField(state.currentTicket.id, 'hours_dedicated', hoursDecimal);
-    showToast(`⏱️ ${timeFormat} guardadas`, 'success');
+    // Formato para mostrar
+    const timeFormat = formatSecondsToTime(state.timer.seconds);
+    const totalFormat = formatSecondsToTime(totalHours * 3600);
+    
+    updateTicketField(state.currentTicket.id, 'hours_dedicated', totalHours);
+    showToast(`⏱️ +${timeFormat} guardadas (Total: ${totalFormat})`, 'success');
     
     // Actualizar ticket en estado local
-    state.currentTicket.hours_dedicated = hoursDecimal;
+    state.currentTicket.hours_dedicated = totalHours;
     renderTicketDetail();
     
     resetTimer();
 }
+
+// Función auxiliar para guardar tiempo en un ticket específico (usado al cambiar de ticket)
+async function saveTimerForTicket(ticketId, seconds) {
+    if (!ticketId || seconds === 0) return;
+    
+    try {
+        // Obtener horas actuales del ticket
+        const response = await apiCall(`${TICKETS_API}?action=get&id=${ticketId}`);
+        if (response.success) {
+            const currentHours = parseFloat(response.data.hours_dedicated || 0);
+            const newHoursDecimal = seconds / 3600;
+            const totalHours = currentHours + newHoursDecimal;
+            
+            await updateTicketField(ticketId, 'hours_dedicated', totalHours);
+            showToast(`⏱️ +${formatSecondsToTime(seconds)} guardadas en ticket anterior`, 'success');
+        }
+    } catch (error) {
+        console.error('Error saving timer for ticket:', error);
+    }
+}
+
+// Advertencia antes de cerrar si hay timer activo
+window.addEventListener('beforeunload', (e) => {
+    if (state.timer.running && state.timer.seconds > 0) {
+        saveTimerToStorage(); // Guardar estado antes de cerrar
+        e.preventDefault();
+        e.returnValue = 'Tienes un timer activo. ¿Seguro que quieres salir?';
+        return e.returnValue;
+    }
+});
 
 async function submitNewTicket(e) {
     e.preventDefault();
