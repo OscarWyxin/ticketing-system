@@ -1811,6 +1811,23 @@ function renderPagination() {
 // =====================================================
 
 function showView(view) {
+    // Si hay timer activo y estamos saliendo del ticket-detail, advertir
+    if (state.currentView === 'ticket-detail' && view !== 'ticket-detail' && state.timer.running && state.timer.seconds > 0) {
+        const confirm = window.confirm(
+            `Tienes un timer activo (${formatTimerDisplay(state.timer.seconds)}).\\n\\n¿Quieres guardar el tiempo antes de salir?`
+        );
+        if (confirm) {
+            saveTimer();
+        } else {
+            // Preguntar si quiere descartar
+            const discard = window.confirm('¿Descartar el tiempo sin guardar?');
+            if (!discard) {
+                return; // No cambiar de vista
+            }
+            stopTimerClean();
+        }
+    }
+    
     state.currentView = view;
     
     // Guardar vista en localStorage
