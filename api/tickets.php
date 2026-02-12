@@ -165,9 +165,9 @@ function listTickets($pdo) {
         $params[] = $assigned;
     }
     if ($search) {
-        $where[] = "(t.title LIKE ? OR t.description LIKE ? OR t.ticket_number LIKE ? OR t.contact_name LIKE ?)";
+        $where[] = "(t.title LIKE ? OR t.description LIKE ? OR t.ticket_number LIKE ? OR t.contact_name LIKE ? OR t.contact_email LIKE ? OR t.contact_phone LIKE ?)";
         $searchTerm = "%$search%";
-        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm, $searchTerm]);
+        $params = array_merge($params, [$searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm, $searchTerm]);
     }
     
     $whereClause = $where ? 'WHERE ' . implode(' AND ', $where) : '';

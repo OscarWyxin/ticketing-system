@@ -18,6 +18,7 @@ node_modules/
 .env.local
 .env.production
 VPS_CREDENTIALS.md
+cierre.ps1
 
 # Backup files with potential secrets
 *.bak

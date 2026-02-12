@@ -162,6 +162,19 @@ function setupEventListeners() {
         clearTimeout(searchTimeout);
         searchTimeout = setTimeout(() => {
             state.filters.search = e.target.value;
+            if (e.target.value) {
+                // Al buscar, mostrar todos los tickets (sin filtro de estado)
+                state.filters.status = 'all';
+                state.ticketStatusTab = 'all';
+                if (state.currentView !== 'tickets') {
+                    showView('tickets');
+                    return; // showView ya llama loadTickets
+                }
+                // Actualizar tab visual
+                document.querySelectorAll('.status-tab').forEach(t => {
+                    t.classList.toggle('active', t.dataset.status === 'all');
+                });
+            }
             loadTickets();
         }, 300);
     });
@@ -1809,14 +1822,21 @@ function showView(view) {
     } else if (view === 'project-detail') {
         // Se carga desde loadProjectDetail
     } else if (view === 'tickets') {
-        // Mantener el tab actual o usar 'active' por defecto
-        const currentTab = state.ticketStatusTab || 'active';
-        state.filters = { ...state.filters, status: currentTab, priority: '', category: '', search: '' };
+        // Si hay búsqueda activa, mantenerla y mostrar tab 'all'
+        const hasSearch = state.filters.search && state.filters.search.trim() !== '';
+        const currentTab = hasSearch ? 'all' : (state.ticketStatusTab || 'active');
+        state.filters = { ...state.filters, status: currentTab, priority: '', category: '' };
+        // No resetear search si hay búsqueda activa
+        if (!hasSearch) state.filters.search = '';
         
         // Actualizar UI del tab
         document.querySelectorAll('.status-tab').forEach(t => {
             t.classList.toggle('active', t.dataset.status === currentTab);
         });
+        
+        // Sincronizar input de búsqueda del header
+        const searchInput = document.getElementById('search-input');
+        if (searchInput) searchInput.value = state.filters.search || '';
         
         loadTickets();
     } else if (view === 'backlog-consultoria') {
@@ -3155,6 +3175,15 @@ window.deleteTicket = deleteTicket;
 window.goToPage = goToPage;
 window.showView = showView;
 window.toggleView = toggleView;
+window.refreshCurrentView = function() {
+    if (state.currentView === 'dashboard') { loadStats(); loadTickets(); }
+    else if (state.currentView === 'tickets') { loadTickets(); }
+    else if (state.currentView === 'backlog-consultoria') { loadBacklogTickets('consultoria'); }
+    else if (state.currentView === 'backlog-aib') { loadBacklogTickets('aib'); }
+    else if (state.currentView === 'projects') { loadProjects(); }
+    else if (state.currentView === 'closures-history') { loadClosuresHistory(); }
+    else { loadTickets(); }
+};
 window.openNewTicketModal = openNewTicketModal;
 window.submitNewTicket = submitNewTicket;
 window.switchWorkType = switchWorkType;
