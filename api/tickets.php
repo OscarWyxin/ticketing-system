@@ -26,7 +26,7 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/ghl-notifications.php';
 
-// Verificar si la funciÃ³n existe
+// Verificar si la función existe
 if (!function_exists('notifyTicketCreatedWA')) {
     throw new Exception('notifyTicketCreatedWA not loaded');
 }
@@ -116,7 +116,7 @@ switch ($action) {
 }
 
 /**
- * Listar tickets con filtros y paginaciÃ³n
+ * Listar tickets con filtros y paginación
  */
 function listTickets($pdo) {
     $page = (int)($_GET['page'] ?? 1);
@@ -277,7 +277,7 @@ function getBacklogTickets($pdo) {
 }
 
 /**
- * Obtener un ticket especÃ­fico
+ * Obtener un ticket específico
  */
 function getTicket($pdo, $id) {
     $sql = "SELECT t.*, 
@@ -373,11 +373,11 @@ function createTicket($pdo) {
         // Validaciones
         if (empty($input['title']) || empty($input['description'])) {
             http_response_code(400);
-            echo json_encode(['error' => 'TÃ­tulo y descripciÃ³n son requeridos']);
+            echo json_encode(['error' => 'Título y descripción son requeridos']);
             return;
         }
         
-        // Generar nÃºmero de ticket Ãºnico con prefijo segÃºn work_type
+        // Generar número de ticket único con prefijo según work_type
         $workType = $input['work_type'] ?? 'puntual';
         $prefixMap = ['puntual' => 'P', 'recurrente' => 'R', 'soporte' => 'S'];
         $prefix = $prefixMap[$workType] ?? 'P';
@@ -478,9 +478,9 @@ function createTicket($pdo) {
         // Test: Log todos los inputs recibidos
         file_put_contents(LOGS_PATH . '\\test_input.txt', date('Y-m-d H:i:s') . " - Input recibido:\n" . json_encode($input) . "\n", FILE_APPEND);
         
-        // Notificar al cliente por WhatsApp si tiene telÃ©fono
+        // Notificar al cliente por WhatsApp si tiene teléfono
         if (!empty($input['contact_phone'])) {
-            file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Iniciando notificaciÃ³n WhatsApp\n", FILE_APPEND);
+            file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - Iniciando notificación WhatsApp\n", FILE_APPEND);
             
             try {
                 file_put_contents(LOGS_PATH . '\\debug_whatsapp.txt', date('Y-m-d H:i:s') . " - function_exists test\n", FILE_APPEND);
@@ -566,7 +566,7 @@ function updateTicket($pdo, $id) {
                     $params[] = $input[$field];
                 }
                 
-                // Log de cambios (si funciÃ³n existe)
+                // Log de cambios (si función existe)
                 if (function_exists('logActivity') && $current[$field] != $input[$field]) {
                     try {
                         logActivity($pdo, $id, $input['user_id'] ?? null, 
@@ -987,7 +987,7 @@ function handleGHLWebhook($pdo) {
         'category_id' => $input['category_id'] ?? null
     ];
     
-    // Si hay campos personalizados, aÃ±adirlos a la descripciÃ³n
+    // Si hay campos personalizados, añadirlos a la descripción
     if (isset($input['customFields']) && is_array($input['customFields'])) {
         $ticketData['description'] .= "\n\n--- Campos adicionales ---\n";
         foreach ($input['customFields'] as $key => $value) {
@@ -1026,17 +1026,17 @@ function mapPriority($priority) {
     return $map[strtolower($priority)] ?? 'medium';
 }
 /**
- * Obtener ticket con validaciÃ³n de token de seguimiento
+ * Obtener ticket con validación de token de seguimiento
  */
 function getTicketTracking($pdo, $ticketNumber, $token) {
     if (empty($ticketNumber) || empty($token)) {
         http_response_code(400);
-        echo json_encode(['error' => 'ParÃ¡metros incompletos']);
+        echo json_encode(['error' => 'Parámetros incompletos']);
         return;
     }
     
     try {
-        // Obtener ticket por nÃºmero
+        // Obtener ticket por número
         $stmt = $pdo->prepare("
             SELECT t.*, 
                    u2.name as assigned_to_name,
@@ -1066,7 +1066,7 @@ function getTicketTracking($pdo, $ticketNumber, $token) {
         
         if (!$tokenRecord) {
             http_response_code(403);
-            echo json_encode(['error' => 'Enlace de seguimiento invÃ¡lido o expirado']);
+            echo json_encode(['error' => 'Enlace de seguimiento inválido o expirado']);
             return;
         }
         
@@ -1234,11 +1234,11 @@ function testWhatsAppFlow($pdo) {
     require_once __DIR__ . '/ghl-notifications.php';
     require_once __DIR__ . '/ghl.php';
     
-    echo "Paso 1: Buscar contacto con telÃ©fono $phone\n";
+    echo "Paso 1: Buscar contacto con teléfono $phone\n";
     
     $searchResult = ghlApiCall('/contacts/lookup?phone=' . urlencode($phone), 'GET', null, GHL_LOCATION_ID);
     
-    echo "Resultado bÃºsqueda:\n";
+    echo "Resultado búsqueda:\n";
     echo json_encode($searchResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
     
     if (!empty($searchResult['contacts'][0]['id'])) {
@@ -1255,7 +1255,7 @@ function testWhatsAppFlow($pdo) {
             'locationId' => GHL_LOCATION_ID
         ], GHL_LOCATION_ID);
         
-        echo "Resultado creaciÃ³n:\n";
+        echo "Resultado creación:\n";
         echo json_encode($createResult, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
         
         if (!empty($createResult['contact']['id'])) {
