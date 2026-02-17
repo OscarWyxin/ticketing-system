@@ -132,8 +132,10 @@ function listTickets($pdo) {
     $where = [];
     $params = [];
     
-    // Excluir tickets en backlog de la lista principal
-    $where[] = "(t.backlog = FALSE OR t.backlog IS NULL)";
+    // Excluir tickets en backlog de la lista principal (pero no cuando hay búsqueda activa)
+    if (empty($search)) {
+        $where[] = "(t.backlog = FALSE OR t.backlog IS NULL)";
+    }
     
     // Manejar filtros de estado especiales
     if ($status === 'active') {
