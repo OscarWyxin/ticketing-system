@@ -580,6 +580,12 @@ function updateTicket($pdo, $id) {
             }
         }
         
+        // Sincronizar due_date cuando se cambia max_delivery_date
+        if (isset($input['max_delivery_date']) && !isset($input['due_date'])) {
+            $fields[] = "due_date = ?";
+            $params[] = $input['max_delivery_date'];
+        }
+        
         // Manejar estado resuelto/cerrado
         if (isset($input['status'])) {
             if ($input['status'] === 'resolved' && $current['status'] !== 'resolved') {
