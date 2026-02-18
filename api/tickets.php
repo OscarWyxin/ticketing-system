@@ -26,6 +26,12 @@ set_error_handler(function($errno, $errstr, $errfile, $errline) {
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/ghl-notifications.php';
 
+// Incluir funciones de notificaciones internas (con flag para evitar ejecutar su routing)
+if (!defined('NOTIFICATIONS_INCLUDED')) {
+    define('NOTIFICATIONS_INCLUDED', true);
+}
+require_once __DIR__ . '/notifications.php';
+
 // Verificar si la función existe
 if (!function_exists('notifyTicketCreatedWA')) {
     throw new Exception('notifyTicketCreatedWA not loaded');
@@ -625,8 +631,29 @@ function updateTicket($pdo, $id) {
                         'priority' => $updatedTicket['priority'],
                         'due_date' => $updatedTicket['due_date']
                     ];
-                    // Notificar al nuevo asignatario
+                    // Notificar al nuevo asignatario (email via GHL)
                     notifyTicketAssignment($pdo, $input['assigned_to'], $ticketData);
+                    
+                    // También crear notificación interna
+                    if (function_exists('createNotification')) {
+                        $assignerName = 'Sistema';
+                        if (!empty($input['user_id'])) {
+                            $userStmt = $pdo->prepare("SELECT name FROM users WHERE id = ?");
+                            $userStmt->execute([$input['user_id']]);
+                            $assigner = $userStmt->fetch();
+                            if ($assigner) $assignerName = $assigner['name'];
+                        }
+                        createNotification(
+                            $pdo,
+                            $input['assigned_to'],
+                            'assignment',
+                            $id,
+                            "{$assignerName} te asignó el ticket [{$updatedTicket['ticket_number']}] {$updatedTicket['title']}",
+                            $input['user_id'] ?? null,
+                            null,
+                            false // Email ya enviado por notifyTicketAssignment
+                        );
+                    }
                     
                     // También crear entrada en ticket_assignments
                     $assignStmt = $pdo->prepare("INSERT IGNORE INTO ticket_assignments (ticket_id, user_id, role, assigned_by) VALUES (?, ?, 'primary', ?)");
@@ -928,6 +955,8 @@ function getStats($pdo) {
  * Manejar comentarios
  */
 function handleComments($pdo, $ticketId) {
+    // Funciones de notificaciones ya incluidas al inicio del archivo
+    
     if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $sql = "SELECT cm.*, u.name as user_name, u.avatar 
                 FROM comments cm 
@@ -961,12 +990,76 @@ function handleComments($pdo, $ticketId) {
             !empty($input['is_internal']) ? 1 : 0
         ]);
         
+        $commentId = $pdo->lastInsertId();
+        
         // Actualizar ticket
         $pdo->prepare("UPDATE tickets SET updated_at = NOW() WHERE id = ?")->execute([$ticketId]);
         
         logActivity($pdo, $ticketId, $input['user_id'] ?? null, 'comment_added', null, 'Comentario agregado');
         
-        echo json_encode(['success' => true, 'message' => 'Comentario agregado', 'id' => $pdo->lastInsertId()]);
+        // =====================================================
+        // SISTEMA DE NOTIFICACIONES INTERNAS
+        // =====================================================
+        $notifiedUsers = [];
+        $currentUserId = $input['user_id'] ?? null;
+        
+        // Obtener datos del ticket
+        $stmtTicket = $pdo->prepare("SELECT * FROM tickets WHERE id = ?");
+        $stmtTicket->execute([$ticketId]);
+        $ticket = $stmtTicket->fetch();
+        
+        // Obtener nombre del usuario que comenta
+        $commenterName = $input['author_name'] ?? 'Usuario';
+        if ($currentUserId) {
+            $stmtUser = $pdo->prepare("SELECT name FROM users WHERE id = ?");
+            $stmtUser->execute([$currentUserId]);
+            $commenter = $stmtUser->fetch();
+            if ($commenter) $commenterName = $commenter['name'];
+        }
+        
+        // 1. Detectar @menciones en el contenido
+        $mentions = detectMentions($input['content'], $pdo);
+        foreach ($mentions as $mentionedUserId) {
+            if (!in_array($mentionedUserId, $notifiedUsers) && $mentionedUserId != $currentUserId) {
+                createNotification(
+                    $pdo,
+                    $mentionedUserId,
+                    'mention',
+                    $ticketId,
+                    "{$commenterName} te mencionó: \"{$input['content']}\"",
+                    $currentUserId,
+                    $commentId,
+                    true // Enviar email
+                );
+                $notifiedUsers[] = $mentionedUserId;
+            }
+        }
+        
+        // 2. Notificar al asignado si checkbox "notify_assigned" está activado
+        $notifyAssigned = !empty($input['notify_assigned']);
+        if ($notifyAssigned && $ticket && $ticket['assigned_to']) {
+            $assignedTo = (int)$ticket['assigned_to'];
+            if (!in_array($assignedTo, $notifiedUsers) && $assignedTo != $currentUserId) {
+                createNotification(
+                    $pdo,
+                    $assignedTo,
+                    'comment',
+                    $ticketId,
+                    "{$commenterName} dejó un comentario de seguimiento: \"{$input['content']}\"",
+                    $currentUserId,
+                    $commentId,
+                    true // Enviar email
+                );
+                $notifiedUsers[] = $assignedTo;
+            }
+        }
+        
+        echo json_encode([
+            'success' => true, 
+            'message' => 'Comentario agregado', 
+            'id' => $commentId,
+            'notified' => count($notifiedUsers)
+        ]);
     }
 }
 
@@ -1217,6 +1310,20 @@ function submitPendingInfo($pdo) {
         if ($ticket['assigned_to']) {
             require_once __DIR__ . '/ghl-notifications.php';
             notifyAgentOfClientResponse($pdo, $ticket, $response, $attachmentName);
+            
+            // También crear notificación interna
+            if (function_exists('createNotification')) {
+                createNotification(
+                    $pdo,
+                    $ticket['assigned_to'],
+                    'info_complete',
+                    $ticket['id'],
+                    "El cliente respondió con información pendiente en [{$ticket['ticket_number']}] {$ticket['title']}",
+                    null, // triggered_by es null (cliente)
+                    null,
+                    false // Email ya enviado por notifyAgentOfClientResponse
+                );
+            }
         }
         
         echo json_encode([
@@ -1345,6 +1452,24 @@ function requestReview($pdo, $id) {
                 'assigned_to_name' => $ticket['assigned_to_name'] ?? 'Sin asignar'
             ];
             notifyReviewRequest($pdo, $ticketData);
+            
+            // También crear notificaciones internas para Alfonso (3) y Alicia (6)
+            if (function_exists('createNotification')) {
+                $reviewers = [3, 6]; // Alfonso y Alicia
+                $senderName = $ticket['assigned_to_name'] ?? 'Un agente';
+                foreach ($reviewers as $reviewerId) {
+                    createNotification(
+                        $pdo,
+                        $reviewerId,
+                        'review',
+                        $id,
+                        "{$senderName} solicita revisión del ticket [{$ticket['ticket_number']}] {$ticket['title']}",
+                        $input['user_id'] ?? null,
+                        null,
+                        false // Email ya enviado por notifyReviewRequest
+                    );
+                }
+            }
         }
         
         // Registrar actividad
@@ -1407,6 +1532,27 @@ function approveTicket($pdo, $id) {
         // Registrar actividad
         $stmt = $pdo->prepare("INSERT INTO activity_log (ticket_id, user_id, action, new_value, created_at) VALUES (?, ?, 'approved', ?, NOW())");
         $stmt->execute([$id, $input['user_id'] ?? 1, 'Aprobado']);
+        
+        // Notificar al agente asignado que su trabajo fue aprobado
+        if ($ticket['assigned_to'] && function_exists('createNotification')) {
+            $approverName = 'Un supervisor';
+            if (!empty($input['user_id'])) {
+                $userStmt = $pdo->prepare("SELECT name FROM users WHERE id = ?");
+                $userStmt->execute([$input['user_id']]);
+                $approver = $userStmt->fetch();
+                if ($approver) $approverName = $approver['name'];
+            }
+            createNotification(
+                $pdo,
+                $ticket['assigned_to'],
+                'status_change',
+                $id,
+                "✅ {$approverName} aprobó tu trabajo en [{$ticket['ticket_number']}] {$ticket['title']}",
+                $input['user_id'] ?? null,
+                null,
+                true // Enviar email para este evento importante
+            );
+        }
         
         echo json_encode(['success' => true, 'message' => 'Ticket aprobado']);
         
@@ -1472,6 +1618,27 @@ function rejectTicket($pdo, $id) {
         // Registrar actividad
         $stmt = $pdo->prepare("INSERT INTO activity_log (ticket_id, user_id, action, new_value, created_at) VALUES (?, ?, 'rejected', ?, NOW())");
         $stmt->execute([$id, $input['user_id'] ?? 1, $reason]);
+        
+        // También crear notificación interna para el agente
+        if ($ticket['assigned_to'] && function_exists('createNotification')) {
+            $rejecterName = 'Un supervisor';
+            if (!empty($input['user_id'])) {
+                $userStmt = $pdo->prepare("SELECT name FROM users WHERE id = ?");
+                $userStmt->execute([$input['user_id']]);
+                $rejecter = $userStmt->fetch();
+                if ($rejecter) $rejecterName = $rejecter['name'];
+            }
+            createNotification(
+                $pdo,
+                $ticket['assigned_to'],
+                'status_change',
+                $id,
+                "❌ {$rejecterName} rechazó tu trabajo en [{$ticket['ticket_number']}]: {$reason}",
+                $input['user_id'] ?? null,
+                null,
+                false // Email ya enviado por notifyTicketRejected
+            );
+        }
         
         echo json_encode(['success' => true, 'message' => 'Ticket rechazado']);
         

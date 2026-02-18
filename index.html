@@ -99,9 +99,39 @@
                     <button class="btn-icon" onclick="refreshCurrentView()" title="Refrescar">
                         <i class="fas fa-sync-alt"></i>
                     </button>
-                    <div class="user-menu">
-                        <img src="https://ui-avatars.com/api/?name=Admin&background=6366f1&color=fff" alt="User">
-                        <span>Admin</span>
+                    
+                    <!-- Centro de Notificaciones -->
+                    <div class="notification-center" id="notification-center">
+                        <button class="btn-icon notification-bell" onclick="toggleNotifications()" title="Notificaciones">
+                            <i class="fas fa-bell"></i>
+                            <span class="notification-badge" id="notification-badge">0</span>
+                        </button>
+                        <div class="notification-dropdown" id="notification-dropdown">
+                            <div class="notification-header">
+                                <h4><i class="fas fa-bell"></i> Notificaciones</h4>
+                                <button class="btn-link" onclick="markAllNotificationsRead()">Marcar todas leídas</button>
+                            </div>
+                            <div class="notification-list" id="notification-list">
+                                <div class="notification-empty">
+                                    <i class="fas fa-check-circle"></i>
+                                    <p>No tienes notificaciones</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="user-menu" onclick="toggleUserMenu()">
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=6366f1&color=fff" alt="User" id="current-user-avatar">
+                        <span id="current-user-name">Admin</span>
+                        <i class="fas fa-chevron-down" style="font-size: 0.7rem; margin-left: 4px;"></i>
+                    </div>
+                    
+                    <!-- Menú de usuario para seleccionar usuario actual -->
+                    <div class="user-dropdown" id="user-dropdown">
+                        <div class="user-dropdown-header">Iniciar sesión como:</div>
+                        <div class="user-dropdown-list" id="user-dropdown-list">
+                            <!-- Se llena dinámicamente -->
+                        </div>
                     </div>
                 </div>
             </header>

@@ -12,6 +12,7 @@ const TICKETS_API = `${API_BASE}/tickets.php`;
 const HELPERS_API = `${API_BASE}/helpers.php`;
 const GHL_API = `${API_BASE}/ghl.php`;
 const PROJECTS_API = `${API_BASE}/projects.php`;
+const NOTIFICATIONS_API = `${API_BASE}/notifications.php`;
 
 // Estado de la aplicación
 let state = {
@@ -40,7 +41,14 @@ let state = {
         seconds: 0,
         interval: null,
         ticketId: null  // ID del ticket al que pertenece el timer
-    }
+    },
+    // Sistema de notificaciones
+    notifications: [],
+    unreadNotifications: 0,
+    currentUserId: null,
+    currentUserName: 'Admin',
+    notificationInterval: null,
+    allUsers: [] // Lista de todos los usuarios para @menciones
 };
 
 // =====================================================
@@ -55,6 +63,9 @@ async function init() {
     setupEventListeners();
     setupIframeListener();
     
+    // Cargar usuario guardado o usar default
+    loadCurrentUser();
+    
     // Verificar si hay vista guardada que requiere carga especial
     const savedView = localStorage.getItem('ticketing_currentView');
     const savedTicketId = localStorage.getItem('ticketing_currentTicketId');
@@ -62,6 +73,13 @@ async function init() {
     
     // Cargar data inicial (necesaria para todos los casos)
     await loadInitialData();
+    
+    // Cargar lista de usuarios para el dropdown
+    await loadUsersList();
+    
+    // Iniciar sistema de notificaciones
+    await loadNotifications();
+    startNotificationPolling();
     
     // Si hay un ticket específico guardado, cargarlo directamente
     if (savedView === 'ticket-detail' && savedTicketId) {
@@ -508,6 +526,14 @@ async function loadTicketDetail(id) {
             localStorage.setItem('ticketing_currentTicketId', id);
             renderTicketDetail();
             showTimerForPuntual();
+            
+            // Inicializar @menciones en textarea de comentarios
+            setTimeout(() => {
+                const commentTextarea = document.getElementById('new-comment');
+                if (commentTextarea) {
+                    initMentionAutocomplete(commentTextarea);
+                }
+            }, 100);
             
             // Restaurar timer si existe para este ticket, si no resetear
             restoreOrResetTimer(id);
@@ -1544,11 +1570,18 @@ function renderTicketDetail() {
                     ${renderComments(ticket.comments || [])}
                 </div>
                 <div class="comment-form">
-                    <textarea class="form-control" id="new-comment" placeholder="Escribe un comentario..." rows="3"></textarea>
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <label style="display: flex; align-items: center; gap: 8px; color: var(--gray-500); font-size: 0.85rem;">
-                            <input type="checkbox" id="comment-internal"> Nota interna
-                        </label>
+                    <textarea class="form-control" id="new-comment" placeholder="Escribe un comentario... Usa @nombre para mencionar" rows="3"></textarea>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div style="display: flex; gap: 15px;">
+                            <label style="display: flex; align-items: center; gap: 6px; color: var(--gray-500); font-size: 0.85rem; cursor: pointer;">
+                                <input type="checkbox" id="comment-internal"> 
+                                <i class="fas fa-lock" style="font-size: 0.75rem;"></i> Nota interna
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 6px; color: var(--gray-500); font-size: 0.85rem; cursor: pointer;" title="Enviar notificación por email al responsable del ticket">
+                                <input type="checkbox" id="notify-assigned"> 
+                                <i class="fas fa-bell" style="font-size: 0.75rem; color: var(--warning);"></i> Notificar responsable
+                            </label>
+                        </div>
                         <button class="btn btn-primary btn-sm" onclick="addComment(${ticket.id})">
                             <i class="fas fa-paper-plane"></i> Enviar
                         </button>
@@ -2387,6 +2420,7 @@ async function markInfoComplete(ticketId) {
 async function addComment(ticketId) {
     const textarea = document.getElementById('new-comment');
     const isInternal = document.getElementById('comment-internal')?.checked || false;
+    const notifyAssigned = document.getElementById('notify-assigned')?.checked || false;
     const content = textarea.value.trim();
 
     if (!content) {
@@ -2400,14 +2434,22 @@ async function addComment(ticketId) {
             body: JSON.stringify({
                 content,
                 is_internal: isInternal,
-                user_id: 1, // TODO: Usuario actual
-                author_name: 'Admin'
+                notify_assigned: notifyAssigned,
+                user_id: state.currentUserId || 1,
+                author_name: state.currentUserName || 'Admin'
             })
         });
 
         if (response.success) {
-            showToast('Comentario agregado', 'success');
+            let message = 'Comentario agregado';
+            if (response.notified > 0) {
+                message += ` (${response.notified} notificado${response.notified > 1 ? 's' : ''})`;
+            }
+            showToast(message, 'success');
             textarea.value = '';
+            // Reset checkboxes
+            document.getElementById('comment-internal').checked = false;
+            document.getElementById('notify-assigned').checked = false;
             loadTicketDetail(ticketId);
         } else {
             showToast(response.error || 'Error al agregar comentario', 'error');
@@ -4413,3 +4455,516 @@ async function filterAgentTickets(tab, agentEmail) {
 }
 
 window.filterAgentTickets = filterAgentTickets;
+
+// =====================================================
+// Sistema de Notificaciones Internas
+// =====================================================
+
+/**
+ * Cargar usuario actual desde localStorage o usar default
+ */
+function loadCurrentUser() {
+    const savedUserId = localStorage.getItem('ticketing_currentUserId');
+    const savedUserName = localStorage.getItem('ticketing_currentUserName');
+    
+    if (savedUserId) {
+        state.currentUserId = parseInt(savedUserId);
+        state.currentUserName = savedUserName || 'Usuario';
+        updateUserDisplay();
+    } else {
+        // Default: Admin (ID 1) o primer usuario disponible
+        state.currentUserId = 3; // Alfonso Bello por defecto
+        state.currentUserName = 'Alfonso Bello';
+    }
+}
+
+/**
+ * Actualizar display del usuario en el header
+ */
+function updateUserDisplay() {
+    const nameEl = document.getElementById('current-user-name');
+    const avatarEl = document.getElementById('current-user-avatar');
+    
+    if (nameEl) nameEl.textContent = state.currentUserName;
+    if (avatarEl) {
+        avatarEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(state.currentUserName)}&background=6366f1&color=fff`;
+    }
+}
+
+/**
+ * Cargar lista de usuarios para el dropdown
+ */
+async function loadUsersList() {
+    try {
+        const response = await apiCall(`${NOTIFICATIONS_API}?action=users`);
+        if (response.success && response.data) {
+            state.allUsers = response.data; // Guardar para autocompletado de @menciones
+            renderUserDropdown(response.data);
+        }
+    } catch (error) {
+        console.error('Error cargando usuarios:', error);
+    }
+}
+
+/**
+ * Renderizar dropdown de usuarios
+ */
+function renderUserDropdown(users) {
+    const listEl = document.getElementById('user-dropdown-list');
+    if (!listEl) return;
+    
+    listEl.innerHTML = users.map(user => `
+        <div class="user-dropdown-item ${user.id == state.currentUserId ? 'active' : ''}" 
+             onclick="selectUser(${user.id}, '${escapeHtml(user.name)}')">
+            <img src="${user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=6366f1&color=fff`}" alt="${escapeHtml(user.name)}">
+            <div class="user-info">
+                <div class="user-name">${escapeHtml(user.name)}</div>
+                <div class="user-email">${escapeHtml(user.email)}</div>
+            </div>
+            ${user.id == state.currentUserId ? '<i class="fas fa-check" style="color: var(--success);"></i>' : ''}
+        </div>
+    `).join('');
+}
+
+/**
+ * Seleccionar usuario actual
+ */
+function selectUser(userId, userName) {
+    state.currentUserId = userId;
+    state.currentUserName = userName;
+    
+    // Guardar en localStorage
+    localStorage.setItem('ticketing_currentUserId', userId);
+    localStorage.setItem('ticketing_currentUserName', userName);
+    
+    // Actualizar UI
+    updateUserDisplay();
+    toggleUserMenu();
+    
+    // Recargar notificaciones
+    loadNotifications();
+    
+    showToast(`Sesión iniciada como ${userName}`, 'success');
+}
+
+/**
+ * Toggle del menú de usuario
+ */
+function toggleUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    const notifDropdown = document.getElementById('notification-dropdown');
+    
+    // Cerrar notificaciones si está abierto
+    if (notifDropdown) notifDropdown.classList.remove('show');
+    
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+    }
+}
+
+/**
+ * Toggle del dropdown de notificaciones
+ */
+function toggleNotifications() {
+    const dropdown = document.getElementById('notification-dropdown');
+    const userDropdown = document.getElementById('user-dropdown');
+    
+    // Cerrar user menu si está abierto
+    if (userDropdown) userDropdown.classList.remove('show');
+    
+    if (dropdown) {
+        dropdown.classList.toggle('show');
+        
+        // Si se abre, recargar notificaciones
+        if (dropdown.classList.contains('show')) {
+            loadNotifications();
+        }
+    }
+}
+
+/**
+ * Cargar notificaciones del usuario actual
+ */
+async function loadNotifications() {
+    if (!state.currentUserId) return;
+    
+    try {
+        const response = await apiCall(`${NOTIFICATIONS_API}?action=list&user_id=${state.currentUserId}&limit=20`);
+        
+        if (response.success && response.data) {
+            state.notifications = response.data;
+            state.unreadNotifications = response.data.filter(n => !n.is_read).length;
+            renderNotifications();
+            updateNotificationBadge();
+        }
+    } catch (error) {
+        console.error('Error cargando notificaciones:', error);
+    }
+}
+
+/**
+ * Renderizar lista de notificaciones
+ */
+function renderNotifications() {
+    const listEl = document.getElementById('notification-list');
+    if (!listEl) return;
+    
+    if (state.notifications.length === 0) {
+        listEl.innerHTML = `
+            <div class="notification-empty">
+                <i class="fas fa-check-circle"></i>
+                <p>No tienes notificaciones</p>
+            </div>
+        `;
+        return;
+    }
+    
+    listEl.innerHTML = state.notifications.map(notif => {
+        const iconMap = {
+            'mention': 'at',
+            'comment': 'comment',
+            'assignment': 'user-check',
+            'status_change': 'exchange-alt',
+            'overdue': 'exclamation-triangle',
+            'review': 'search',
+            'info_complete': 'check-circle'
+        };
+        
+        const icon = iconMap[notif.type] || 'bell';
+        const unreadClass = notif.is_read ? '' : 'unread';
+        
+        return `
+            <div class="notification-item ${unreadClass}" onclick="handleNotificationClick(${notif.id}, ${notif.ticket_id})">
+                <div class="notification-icon ${notif.type}">
+                    <i class="fas fa-${icon}"></i>
+                </div>
+                <div class="notification-content">
+                    <div class="notification-title">${escapeHtml(notif.message)}</div>
+                    <div class="notification-meta">
+                        <span class="notification-ticket">#${notif.ticket_number || 'N/A'}</span>
+                        <span>•</span>
+                        <span>${timeAgo(notif.created_at)}</span>
+                        ${notif.triggered_by_name ? `<span>• por ${escapeHtml(notif.triggered_by_name)}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+/**
+ * Actualizar badge de notificaciones
+ */
+function updateNotificationBadge() {
+    const badge = document.getElementById('notification-badge');
+    if (!badge) return;
+    
+    badge.textContent = state.unreadNotifications;
+    badge.style.display = state.unreadNotifications > 0 ? 'flex' : 'none';
+}
+
+/**
+ * Manejar click en una notificación
+ */
+async function handleNotificationClick(notificationId, ticketId) {
+    // Marcar como leída
+    try {
+        await apiCall(`${NOTIFICATIONS_API}?action=mark-read`, {
+            method: 'POST',
+            body: JSON.stringify({ notification_id: notificationId })
+        });
+        
+        // Actualizar estado local
+        const notif = state.notifications.find(n => n.id === notificationId);
+        if (notif && !notif.is_read) {
+            notif.is_read = true;
+            state.unreadNotifications--;
+            updateNotificationBadge();
+            renderNotifications();
+        }
+    } catch (error) {
+        console.error('Error marcando notificación:', error);
+    }
+    
+    // Cerrar dropdown
+    toggleNotifications();
+    
+    // Ir al ticket
+    if (ticketId) {
+        loadTicketDetail(ticketId);
+    }
+}
+
+/**
+ * Marcar todas las notificaciones como leídas
+ */
+async function markAllNotificationsRead() {
+    if (!state.currentUserId || state.unreadNotifications === 0) return;
+    
+    try {
+        const response = await apiCall(`${NOTIFICATIONS_API}?action=mark-all-read`, {
+            method: 'POST',
+            body: JSON.stringify({ user_id: state.currentUserId })
+        });
+        
+        if (response.success) {
+            state.notifications.forEach(n => n.is_read = true);
+            state.unreadNotifications = 0;
+            updateNotificationBadge();
+            renderNotifications();
+            showToast('Todas las notificaciones marcadas como leídas', 'success');
+        }
+    } catch (error) {
+        showToast('Error al marcar notificaciones', 'error');
+    }
+}
+
+// =====================================================
+// Sistema de @Menciones con Autocomplete
+// =====================================================
+
+let mentionState = {
+    isActive: false,
+    startPosition: 0,
+    searchText: '',
+    selectedIndex: 0
+};
+
+/**
+ * Inicializar sistema de @menciones en un textarea
+ */
+function initMentionAutocomplete(textarea) {
+    if (!textarea) return;
+    
+    // Crear contenedor de sugerencias si no existe
+    let suggestionsContainer = textarea.parentElement.querySelector('.mention-suggestions');
+    if (!suggestionsContainer) {
+        suggestionsContainer = document.createElement('div');
+        suggestionsContainer.className = 'mention-suggestions';
+        suggestionsContainer.id = 'mention-suggestions';
+        textarea.parentElement.style.position = 'relative';
+        textarea.parentElement.appendChild(suggestionsContainer);
+    }
+    
+    // Eventos del textarea
+    textarea.addEventListener('input', handleMentionInput);
+    textarea.addEventListener('keydown', handleMentionKeydown);
+    textarea.addEventListener('blur', () => {
+        // Pequeño delay para permitir clicks en sugerencias
+        setTimeout(() => hideMentionSuggestions(), 150);
+    });
+}
+
+/**
+ * Manejar input en textarea para detectar @
+ */
+function handleMentionInput(e) {
+    const textarea = e.target;
+    const value = textarea.value;
+    const cursorPos = textarea.selectionStart;
+    
+    // Buscar @ antes del cursor
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+    
+    if (lastAtIndex >= 0) {
+        // Verificar que @ es inicio de palabra (después de espacio, inicio, o salto de línea)
+        const charBefore = lastAtIndex > 0 ? value.charAt(lastAtIndex - 1) : ' ';
+        if (charBefore === ' ' || charBefore === '\n' || lastAtIndex === 0) {
+            const searchText = textBeforeCursor.substring(lastAtIndex + 1);
+            
+            // Solo buscar si no hay espacios en el texto de búsqueda
+            if (!searchText.includes(' ') && searchText.length <= 30) {
+                mentionState.isActive = true;
+                mentionState.startPosition = lastAtIndex;
+                mentionState.searchText = searchText.toLowerCase();
+                mentionState.selectedIndex = 0;
+                
+                showMentionSuggestions(textarea, searchText);
+                return;
+            }
+        }
+    }
+    
+    hideMentionSuggestions();
+}
+
+/**
+ * Manejar teclas especiales en autocomplete
+ */
+function handleMentionKeydown(e) {
+    if (!mentionState.isActive) return;
+    
+    const suggestionsContainer = document.getElementById('mention-suggestions');
+    if (!suggestionsContainer || !suggestionsContainer.classList.contains('show')) return;
+    
+    const items = suggestionsContainer.querySelectorAll('.mention-item');
+    if (items.length === 0) return;
+    
+    switch (e.key) {
+        case 'ArrowDown':
+            e.preventDefault();
+            mentionState.selectedIndex = Math.min(mentionState.selectedIndex + 1, items.length - 1);
+            updateMentionSelection(items);
+            break;
+            
+        case 'ArrowUp':
+            e.preventDefault();
+            mentionState.selectedIndex = Math.max(mentionState.selectedIndex - 1, 0);
+            updateMentionSelection(items);
+            break;
+            
+        case 'Enter':
+        case 'Tab':
+            e.preventDefault();
+            const selectedItem = items[mentionState.selectedIndex];
+            if (selectedItem) {
+                selectMention(e.target, selectedItem.dataset.userId, selectedItem.dataset.userName);
+            }
+            break;
+            
+        case 'Escape':
+            hideMentionSuggestions();
+            break;
+    }
+}
+
+/**
+ * Actualizar selección visual
+ */
+function updateMentionSelection(items) {
+    items.forEach((item, index) => {
+        item.classList.toggle('selected', index === mentionState.selectedIndex);
+    });
+    
+    // Scroll al elemento seleccionado
+    const selected = items[mentionState.selectedIndex];
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest' });
+    }
+}
+
+/**
+ * Mostrar sugerencias de usuarios
+ */
+function showMentionSuggestions(textarea, searchText) {
+    const suggestionsContainer = document.getElementById('mention-suggestions');
+    if (!suggestionsContainer) return;
+    
+    // Filtrar usuarios
+    const filteredUsers = state.allUsers.filter(user => {
+        const name = user.name.toLowerCase();
+        const email = user.email?.toLowerCase() || '';
+        const search = searchText.toLowerCase();
+        return name.includes(search) || email.includes(search);
+    }).slice(0, 8); // Máximo 8 sugerencias
+    
+    if (filteredUsers.length === 0) {
+        hideMentionSuggestions();
+        return;
+    }
+    
+    // Renderizar sugerencias
+    suggestionsContainer.innerHTML = filteredUsers.map((user, index) => `
+        <div class="mention-item ${index === 0 ? 'selected' : ''}" 
+             data-user-id="${user.id}" 
+             data-user-name="${escapeHtml(user.name)}"
+             onclick="selectMentionFromClick(${user.id}, '${escapeHtml(user.name).replace(/'/g, "\\'")}')">
+            <img src="${user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=6366f1&color=fff&size=32`}" 
+                 alt="${escapeHtml(user.name)}">
+            <div class="mention-user-info">
+                <div class="mention-user-name">${escapeHtml(user.name)}</div>
+                <div class="mention-user-email">${escapeHtml(user.email || '')}</div>
+            </div>
+        </div>
+    `).join('');
+    
+    // Posicionar y mostrar
+    suggestionsContainer.classList.add('show');
+}
+
+/**
+ * Ocultar sugerencias
+ */
+function hideMentionSuggestions() {
+    const suggestionsContainer = document.getElementById('mention-suggestions');
+    if (suggestionsContainer) {
+        suggestionsContainer.classList.remove('show');
+    }
+    mentionState.isActive = false;
+}
+
+/**
+ * Seleccionar mención (por click)
+ */
+function selectMentionFromClick(userId, userName) {
+    const textarea = document.getElementById('new-comment');
+    if (textarea) {
+        selectMention(textarea, userId, userName);
+    }
+}
+
+/**
+ * Insertar mención seleccionada
+ */
+function selectMention(textarea, userId, userName) {
+    const value = textarea.value;
+    const beforeMention = value.substring(0, mentionState.startPosition);
+    const afterCursor = value.substring(textarea.selectionStart);
+    
+    // Crear nombre para mención (primera palabra o nombre completo sin espacios)
+    const mentionName = userName.split(' ')[0].toLowerCase();
+    
+    // Insertar mención
+    const newValue = beforeMention + '@' + mentionName + ' ' + afterCursor;
+    textarea.value = newValue;
+    
+    // Posicionar cursor después de la mención
+    const newCursorPos = mentionState.startPosition + mentionName.length + 2; // +2 para @ y espacio
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+    textarea.focus();
+    
+    hideMentionSuggestions();
+}
+
+// Exponer función global
+window.selectMentionFromClick = selectMentionFromClick;
+
+/**
+ * Iniciar polling de notificaciones
+ */
+function startNotificationPolling() {
+    // Polling cada 60 segundos
+    state.notificationInterval = setInterval(() => {
+        if (state.currentUserId) {
+            loadNotifications();
+        }
+    }, 60000);
+}
+
+/**
+ * Cerrar dropdowns al hacer click fuera
+ */
+document.addEventListener('click', (e) => {
+    const notifCenter = document.getElementById('notification-center');
+    const userMenu = document.querySelector('.user-menu');
+    const notifDropdown = document.getElementById('notification-dropdown');
+    const userDropdown = document.getElementById('user-dropdown');
+    
+    // Cerrar notificaciones si click fuera
+    if (notifCenter && !notifCenter.contains(e.target) && notifDropdown) {
+        notifDropdown.classList.remove('show');
+    }
+    
+    // Cerrar user menu si click fuera
+    if (userMenu && !userMenu.contains(e.target) && userDropdown && !userDropdown.contains(e.target)) {
+        userDropdown.classList.remove('show');
+    }
+});
+
+// Exponer funciones globalmente
+window.toggleNotifications = toggleNotifications;
+window.toggleUserMenu = toggleUserMenu;
+window.selectUser = selectUser;
+window.handleNotificationClick = handleNotificationClick;
+window.markAllNotificationsRead = markAllNotificationsRead;
