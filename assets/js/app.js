@@ -68,6 +68,9 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    // Limpiar localStorage viejo (migración a nuevo sistema de auth)
+    cleanOldLocalStorage();
+    
     // PRIMERO: Verificar autenticación
     const isAuth = await checkAuthentication();
     if (!isAuth) {
@@ -5025,6 +5028,25 @@ document.addEventListener('click', (e) => {
 // =====================================================
 // Sistema de Autenticación
 // =====================================================
+
+/**
+ * Limpiar localStorage viejo del sistema anterior (sin auth)
+ * Esto fuerza a todos los usuarios a hacer login con el nuevo sistema
+ */
+function cleanOldLocalStorage() {
+    // Si existe el viejo sistema (sin auth_token) pero con usuario guardado, limpiar todo
+    const hasOldSystem = localStorage.getItem('ticketing_currentUserId') && !localStorage.getItem('auth_token');
+    
+    if (hasOldSystem) {
+        console.log('Migrando a nuevo sistema de autenticación...');
+        // Limpiar todo el localStorage viejo
+        localStorage.removeItem('ticketing_currentUserId');
+        localStorage.removeItem('ticketing_currentUserName');
+        localStorage.removeItem('ticketing_currentView');
+        localStorage.removeItem('ticketing_currentTicketId');
+        localStorage.removeItem('ticketing_agentEmail');
+    }
+}
 
 /**
  * Verificar si el usuario está autenticado
