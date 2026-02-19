@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar Sesión - Sistema de Tickets</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            width: 100%;
+            max-width: 420px;
+            overflow: hidden;
+        }
+        
+        .login-header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: white;
+        }
+        
+        .login-header i {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+        
+        .login-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .login-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .login-form {
+            padding: 40px 30px;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 500;
+            color: #374151;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .input-wrapper {
+            position: relative;
+        }
+        
+        .input-wrapper i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9ca3af;
+            font-size: 16px;
+        }
+        
+        .form-control {
+            width: 100%;
+            padding: 14px 14px 14px 44px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 15px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+        
+        .form-control:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        
+        .form-control::placeholder {
+            color: #9ca3af;
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+        
+        .btn-login:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-login i {
+            margin-right: 8px;
+        }
+        
+        .error-message {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            padding: 4px;
+        }
+        
+        .toggle-password:hover {
+            color: #6366f1;
+        }
+        
+        .footer-text {
+            text-align: center;
+            margin-top: 20px;
+            color: #9ca3af;
+            font-size: 13px;
+        }
+        
+        @media (max-width: 480px) {
+            .login-header {
+                padding: 30px 20px;
+            }
+            
+            .login-form {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <i class="fas fa-ticket-alt"></i>
+            <h1>Sistema de Tickets</h1>
+            <p>Inicia sesión para continuar</p>
+        </div>
+        
+        <form class="login-form" id="login-form" onsubmit="handleLogin(event)">
+            <div class="error-message" id="error-message">
+                <i class="fas fa-exclamation-circle"></i>
+                <span id="error-text"></span>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Correo electrónico</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-envelope"></i>
+                    <input type="email" id="email" class="form-control" placeholder="tu@email.com" required autofocus>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Contraseña</label>
+                <div class="input-wrapper">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" class="form-control" placeholder="••••••••" required>
+                    <button type="button" class="toggle-password" onclick="togglePassword()">
+                        <i class="fas fa-eye" id="toggle-icon"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn-login" id="btn-login">
+                <i class="fas fa-sign-in-alt"></i>
+                Iniciar Sesión
+            </button>
+            
+            <p class="footer-text">
+                <i class="fas fa-shield-alt"></i> Acceso restringido
+            </p>
+        </form>
+    </div>
+    
+    <script>
+        // Verificar si ya hay sesión activa
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('auth_token');
+            if (token) {
+                verifySession(token);
+            }
+        });
+        
+        async function verifySession(token) {
+            try {
+                const response = await fetch('./api/auth.php?action=me', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Sesión válida, redirigir a la app
+                    window.location.href = 'index.html';
+                }
+            } catch (e) {
+                // Token inválido, quedarse en login
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('auth_user');
+            }
+        }
+        
+        async function handleLogin(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.getElementById('btn-login');
+            const errorDiv = document.getElementById('error-message');
+            const errorText = document.getElementById('error-text');
+            
+            // Ocultar errores previos
+            errorDiv.classList.remove('show');
+            
+            // Deshabilitar botón
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Iniciando...';
+            
+            try {
+                const response = await fetch('./api/auth.php?action=login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Guardar token y usuario
+                    localStorage.setItem('auth_token', data.token);
+                    localStorage.setItem('auth_user', JSON.stringify(data.user));
+                    
+                    // Redirigir a la app
+                    window.location.href = 'index.html';
+                } else {
+                    // Mostrar error
+                    errorText.textContent = data.error || 'Error al iniciar sesión';
+                    errorDiv.classList.add('show');
+                    
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+                }
+            } catch (error) {
+                errorText.textContent = 'Error de conexión. Intenta de nuevo.';
+                errorDiv.classList.add('show');
+                
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Iniciar Sesión';
+            }
+        }
+        
+        function togglePassword() {
+            const input = document.getElementById('password');
+            const icon = document.getElementById('toggle-icon');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+    </script>
+</body>
+</html>

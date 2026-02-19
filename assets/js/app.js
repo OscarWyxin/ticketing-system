@@ -48,8 +48,16 @@ let state = {
     currentUserId: null,
     currentUserName: 'Admin',
     notificationInterval: null,
-    allUsers: [] // Lista de todos los usuarios para @menciones
+    allUsers: [], // Lista de todos los usuarios para @menciones
+    // Sistema de autenticación
+    auth: {
+        token: null,
+        user: null,
+        isAuthenticated: false
+    }
 };
+
+const AUTH_API = `${API_BASE}/auth.php`;
 
 // =====================================================
 // Inicialización
@@ -60,11 +68,22 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function init() {
+    // PRIMERO: Verificar autenticación
+    const isAuth = await checkAuthentication();
+    if (!isAuth) {
+        // Redirigir a login
+        window.location.href = 'login.html';
+        return;
+    }
+    
     setupEventListeners();
     setupIframeListener();
     
-    // Cargar usuario guardado o usar default
-    loadCurrentUser();
+    // Aplicar permisos según rol
+    applyRolePermissions();
+    
+    // El usuario ya está cargado desde auth
+    updateUserDisplay();
     
     // Verificar si hay vista guardada que requiere carga especial
     const savedView = localStorage.getItem('ticketing_currentView');
@@ -104,6 +123,16 @@ async function init() {
     await loadStats();
     updateBadges();
     await loadTickets();
+    
+    // Para agentes: ir directo a su dashboard de tickets
+    if (state.auth.user?.role === 'agent') {
+        const agentEmail = state.auth.user.email;
+        loadAgentDashboardByEmail(agentEmail);
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.agentEmail === agentEmail);
+        });
+        return;
+    }
     
     // Restaurar vista guardada o mostrar dashboard
     if (savedView && savedView !== 'dashboard' && savedView !== 'ticket-detail') {
@@ -4502,10 +4531,23 @@ function loadCurrentUser() {
 function updateUserDisplay() {
     const nameEl = document.getElementById('current-user-name');
     const avatarEl = document.getElementById('current-user-avatar');
+    const dropdownNameEl = document.getElementById('dropdown-user-name');
+    const dropdownRoleEl = document.getElementById('dropdown-user-role');
     
     if (nameEl) nameEl.textContent = state.currentUserName;
     if (avatarEl) {
         avatarEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(state.currentUserName)}&background=6366f1&color=fff`;
+    }
+    
+    // Actualizar dropdown con info del usuario
+    if (dropdownNameEl) dropdownNameEl.textContent = state.currentUserName;
+    if (dropdownRoleEl && state.auth.user) {
+        const roleNames = {
+            'super_admin': 'Super Admin',
+            'admin': 'Administrador',
+            'agent': 'Agente'
+        };
+        dropdownRoleEl.textContent = roleNames[state.auth.user.role] || state.auth.user.role;
     }
 }
 
@@ -4517,7 +4559,7 @@ async function loadUsersList() {
         const response = await apiCall(`${NOTIFICATIONS_API}?action=users`);
         if (response.success && response.data) {
             state.allUsers = response.data; // Guardar para autocompletado de @menciones
-            renderUserDropdown(response.data);
+            // Ya no renderizamos dropdown de usuarios, solo guardamos para menciones
         }
     } catch (error) {
         console.error('Error cargando usuarios:', error);
@@ -4979,6 +5021,449 @@ document.addEventListener('click', (e) => {
         userDropdown.classList.remove('show');
     }
 });
+
+// =====================================================
+// Sistema de Autenticación
+// =====================================================
+
+/**
+ * Verificar si el usuario está autenticado
+ */
+async function checkAuthentication() {
+    const token = localStorage.getItem('auth_token');
+    const savedUser = localStorage.getItem('auth_user');
+    
+    if (!token) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`${AUTH_API}?action=me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.user) {
+            // Usuario autenticado
+            state.auth.token = token;
+            state.auth.user = data.user;
+            state.auth.isAuthenticated = true;
+            
+            // Sincronizar con el estado existente
+            state.currentUserId = data.user.id;
+            state.currentUserName = data.user.name;
+            
+            return true;
+        } else {
+            // Token inválido, limpiar
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('auth_user');
+            return false;
+        }
+    } catch (error) {
+        console.error('Error verificando autenticación:', error);
+        return false;
+    }
+}
+
+/**
+ * Cerrar sesión
+ */
+async function logout() {
+    const token = localStorage.getItem('auth_token');
+    
+    try {
+        if (token) {
+            await fetch(`${AUTH_API}?action=logout`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+        }
+    } catch (e) {
+        // Ignorar errores de logout
+    }
+    
+    // Limpiar storage
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    localStorage.removeItem('ticketing_currentView');
+    localStorage.removeItem('ticketing_currentTicketId');
+    localStorage.removeItem('ticketing_agentEmail');
+    
+    // Redirigir a login
+    window.location.href = 'login.html';
+}
+
+/**
+ * Verificar si el usuario tiene un rol específico
+ */
+function hasRole(...roles) {
+    if (!state.auth.user) return false;
+    return roles.includes(state.auth.user.role);
+}
+
+/**
+ * Verificar si el usuario puede realizar una acción
+ */
+function canDo(action) {
+    const role = state.auth.user?.role;
+    if (!role) return false;
+    
+    const permissions = {
+        // Ver todos los tickets
+        'view_all_tickets': ['super_admin', 'admin'],
+        // Crear tickets
+        'create_ticket': ['super_admin', 'admin'],
+        // Editar tickets
+        'edit_ticket': ['super_admin', 'admin'],
+        // Comentar en tickets
+        'comment_ticket': ['super_admin', 'admin', 'agent'],
+        // Ver estadísticas globales
+        'view_global_stats': ['super_admin', 'admin'],
+        // Ver mis métricas
+        'view_my_metrics': ['super_admin', 'admin', 'agent'],
+        // Gestionar usuarios
+        'manage_users': ['super_admin', 'admin'],
+        // Cierres diarios
+        'manage_closures': ['super_admin', 'admin'],
+        // Configuración del sistema
+        'system_config': ['super_admin'],
+        // Ver backlog
+        'view_backlog': ['super_admin', 'admin'],
+        // Ver proyectos
+        'view_projects': ['super_admin', 'admin']
+    };
+    
+    return permissions[action]?.includes(role) || false;
+}
+
+/**
+ * Aplicar permisos según rol del usuario
+ */
+function applyRolePermissions() {
+    const role = state.auth.user?.role;
+    if (!role) return;
+    
+    // === BOTÓN NUEVO TICKET ===
+    const newTicketBtn = document.querySelector('.sidebar-footer .btn-primary');
+    if (newTicketBtn) {
+        if (!canDo('create_ticket')) {
+            newTicketBtn.style.display = 'none';
+        }
+    }
+    
+    // === MENÚ LATERAL ===
+    const navItems = document.querySelectorAll('.nav-item');
+    navItems.forEach(item => {
+        const view = item.dataset.view;
+        const agentEmail = item.dataset.agentEmail;
+        
+        // Para agentes: ocultar vistas que no pueden ver
+        if (role === 'agent') {
+            // Ocultar dashboard global (estadísticas)
+            if (view === 'dashboard') {
+                item.style.display = 'none';
+            }
+            // Ocultar proyectos
+            if (view === 'projects') {
+                item.style.display = 'none';
+            }
+            // Ocultar backlogs
+            if (view === 'backlog-consultoria' || view === 'backlog-aib') {
+                item.style.display = 'none';
+            }
+            // Ocultar cierres
+            if (view === 'closures-history') {
+                item.style.display = 'none';
+            }
+            // Ocultar otros agentes (solo ver el suyo)
+            if (agentEmail && agentEmail !== state.auth.user.email) {
+                item.style.display = 'none';
+            }
+        }
+    });
+    
+    // === PARA AGENTES: Mostrar vista de mis métricas por defecto ===
+    if (role === 'agent') {
+        // El agente ve su propio dashboard
+        const agentEmail = state.auth.user.email;
+        const myAgentNav = document.querySelector(`[data-agent-email="${agentEmail}"]`);
+        
+        if (myAgentNav) {
+            // Renombrar a "Mis Tickets"
+            const spanEl = myAgentNav.querySelector('span');
+            if (spanEl) spanEl.textContent = 'Mis Tickets';
+        }
+        
+        // Agregar link a Mis Métricas si no existe
+        addMyMetricsLink();
+    }
+    
+    // === HEADER: Todos pueden usar el menú para cerrar sesión ===
+    // El menú ya no tiene opción de cambiar usuario, solo cerrar sesión y cambiar contraseña
+}
+
+
+/**
+ * Agregar link a Mis Métricas para agentes
+ */
+function addMyMetricsLink() {
+    const navDivider = document.querySelector('.nav-divider');
+    if (!navDivider) return;
+    
+    // Verificar si ya existe
+    if (document.querySelector('[data-view="my-metrics"]')) return;
+    
+    // Crear link
+    const link = document.createElement('a');
+    link.href = '#';
+    link.className = 'nav-item';
+    link.dataset.view = 'my-metrics';
+    link.innerHTML = '<i class="fas fa-chart-bar"></i><span>Mis Métricas</span>';
+    link.onclick = (e) => {
+        e.preventDefault();
+        showMyMetrics();
+    };
+    
+    // Insertar antes del divider de agentes
+    navDivider.parentNode.insertBefore(link, navDivider);
+}
+
+/**
+ * Mostrar métricas del agente actual
+ */
+async function showMyMetrics() {
+    // Actualizar nav
+    document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.view === 'my-metrics');
+    });
+    
+    // Ocultar todas las secciones
+    document.querySelectorAll('.content-section').forEach(section => {
+        section.classList.add('hidden');
+    });
+    
+    // Mostrar sección de métricas (crearla si no existe)
+    let metricsSection = document.getElementById('view-my-metrics');
+    if (!metricsSection) {
+        metricsSection = createMyMetricsSection();
+        document.querySelector('.main-content').appendChild(metricsSection);
+    }
+    metricsSection.classList.remove('hidden');
+    
+    // Cargar datos
+    await loadMyMetrics();
+}
+
+/**
+ * Crear sección de métricas
+ */
+function createMyMetricsSection() {
+    const section = document.createElement('section');
+    section.className = 'content-section';
+    section.id = 'view-my-metrics';
+    section.innerHTML = `
+        <div class="section-header">
+            <h1><i class="fas fa-chart-bar"></i> Mis Métricas</h1>
+        </div>
+        
+        <div class="stats-grid" id="my-metrics-stats">
+            <div class="stat-card">
+                <div class="stat-icon bg-primary">
+                    <i class="fas fa-ticket-alt"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="my-total-assigned">0</span>
+                    <span class="stat-label">Total Asignados</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-warning">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="my-pending">0</span>
+                    <span class="stat-label">Pendientes</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon bg-success">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="my-completed-month">0</span>
+                    <span class="stat-label">Completados este mes</span>
+                </div>
+            </div>
+            <div class="stat-card" style="border-left: 4px solid #ef4444;">
+                <div class="stat-icon" style="background: #fef2f2; color: #ef4444;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="my-overdue">0</span>
+                    <span class="stat-label">Vencidos</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats-grid" style="margin-top: 20px;">
+            <div class="stat-card" style="border-left: 4px solid #3b82f6;">
+                <div class="stat-icon" style="background: #eff6ff; color: #3b82f6;">
+                    <i class="fas fa-stopwatch"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="my-avg-resolution">0h</span>
+                    <span class="stat-label">Tiempo medio resolución</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card" style="margin-top: 20px;">
+            <div class="card-header">
+                <h3><i class="fas fa-chart-line"></i> Tickets completados por mes</h3>
+            </div>
+            <div class="card-body" style="height: 300px;">
+                <canvas id="my-metrics-chart"></canvas>
+            </div>
+        </div>
+    `;
+    return section;
+}
+
+let myMetricsChart = null;
+
+/**
+ * Cargar métricas del agente
+ */
+async function loadMyMetrics() {
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${AUTH_API}?action=my-metrics`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.metrics) {
+            const m = data.metrics;
+            
+            // Actualizar cards
+            document.getElementById('my-total-assigned').textContent = m.total_assigned;
+            document.getElementById('my-pending').textContent = m.pending;
+            document.getElementById('my-completed-month').textContent = m.completed_this_month;
+            document.getElementById('my-overdue').textContent = m.overdue;
+            document.getElementById('my-avg-resolution').textContent = m.avg_resolution_hours + 'h';
+            
+            // Gráfica de completados por mes
+            renderMyMetricsChart(m.monthly_completed);
+        }
+    } catch (error) {
+        console.error('Error cargando métricas:', error);
+        showToast('Error cargando métricas', 'error');
+    }
+}
+
+/**
+ * Renderizar gráfica de métricas
+ */
+function renderMyMetricsChart(monthlyData) {
+    const canvas = document.getElementById('my-metrics-chart');
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Destruir gráfica anterior si existe
+    if (myMetricsChart) {
+        myMetricsChart.destroy();
+    }
+    
+    const labels = monthlyData.map(d => {
+        const [year, month] = d.month.split('-');
+        const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        return monthNames[parseInt(month) - 1] + ' ' + year;
+    });
+    const values = monthlyData.map(d => d.count);
+    
+    myMetricsChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Tickets completados',
+                data: values,
+                backgroundColor: 'rgba(99, 102, 241, 0.8)',
+                borderColor: 'rgba(99, 102, 241, 1)',
+                borderWidth: 1,
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: {
+                        stepSize: 1
+                    }
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Cambiar contraseña
+ */
+async function changePassword(currentPassword, newPassword) {
+    const token = localStorage.getItem('auth_token');
+    
+    try {
+        const response = await fetch(`${AUTH_API}?action=change-password`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('Contraseña actualizada', 'success');
+            return true;
+        } else {
+            showToast(data.error || 'Error al cambiar contraseña', 'error');
+            return false;
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+        return false;
+    }
+}
+
+// Exponer funciones de auth globalmente
+window.logout = logout;
+window.hasRole = hasRole;
+window.canDo = canDo;
+window.changePassword = changePassword;
+window.showMyMetrics = showMyMetrics;
 
 // Exponer funciones globalmente
 window.toggleNotifications = toggleNotifications;

@@ -126,11 +126,19 @@
                         <i class="fas fa-chevron-down" style="font-size: 0.7rem; margin-left: 4px;"></i>
                     </div>
                     
-                    <!-- Menú de usuario para seleccionar usuario actual -->
+                    <!-- Menú de usuario -->
                     <div class="user-dropdown" id="user-dropdown">
-                        <div class="user-dropdown-header">Iniciar sesión como:</div>
-                        <div class="user-dropdown-list" id="user-dropdown-list">
-                            <!-- Se llena dinámicamente -->
+                        <div class="user-dropdown-header">
+                            <span id="dropdown-user-name">Usuario</span>
+                            <small id="dropdown-user-role" style="color: #9ca3af; display: block;"></small>
+                        </div>
+                        <div class="user-dropdown-actions">
+                            <a href="#" onclick="openChangePasswordModal(); return false;" class="user-dropdown-item">
+                                <i class="fas fa-key"></i> Cambiar contraseña
+                            </a>
+                            <a href="#" onclick="logout(); return false;" class="user-dropdown-item" style="color: #ef4444;">
+                                <i class="fas fa-sign-out-alt"></i> Cerrar sesión
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -1296,11 +1304,69 @@
         </div>
     </div>
 
+    <!-- Modal Cambiar Contraseña -->
+    <div class="modal-overlay" id="modal-change-password">
+        <div class="modal" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2><i class="fas fa-key"></i> Cambiar Contraseña</h2>
+                <button class="btn-close" onclick="closeModal('modal-change-password')">&times;</button>
+            </div>
+            <form onsubmit="handleChangePassword(event)">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Contraseña actual</label>
+                        <input type="password" id="current-password" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Nueva contraseña</label>
+                        <input type="password" id="new-password" class="form-control" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label>Confirmar nueva contraseña</label>
+                        <input type="password" id="confirm-password" class="form-control" required minlength="6">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('modal-change-password')">Cancelar</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Toast Notifications -->
     <div class="toast-container" id="toast-container"></div>
 
     <script src="assets/js/app.js"></script>
     <script>
+        // Función para abrir modal de cambiar contraseña
+        function openChangePasswordModal() {
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+            document.getElementById('modal-change-password').classList.add('active');
+            document.getElementById('user-dropdown').classList.remove('show');
+        }
+        
+        // Manejar cambio de contraseña
+        async function handleChangePassword(e) {
+            e.preventDefault();
+            
+            const currentPwd = document.getElementById('current-password').value;
+            const newPwd = document.getElementById('new-password').value;
+            const confirmPwd = document.getElementById('confirm-password').value;
+            
+            if (newPwd !== confirmPwd) {
+                showToast('Las contraseñas no coinciden', 'error');
+                return;
+            }
+            
+            const success = await changePassword(currentPwd, newPwd);
+            if (success) {
+                closeModal('modal-change-password');
+            }
+        }
+        
         // Restaurar vista guardada inmediatamente para evitar flickering
         (function() {
             const savedView = localStorage.getItem('ticketing_currentView');
