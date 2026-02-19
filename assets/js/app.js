@@ -1165,7 +1165,7 @@ function renderTickets() {
                 <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
                 <td>
                     ${ticket.due_date ? 
-                        `<span style="color: ${new Date(ticket.due_date) < new Date() ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
+                        `<span style="color: ${isPastDue(ticket.due_date) ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
                         '<span style="color: var(--gray-400)">—</span>'}
                 </td>
                 <td>${getDeliveryTime(ticket)}</td>
@@ -1347,7 +1347,7 @@ function renderBacklogTickets(tickets, type = 'consultoria', isHistory = false, 
                 <td><span style="color: var(--gray-500)">${formatDate(ticket.created_at)}</span></td>
                 <td>
                     ${ticket.due_date ? 
-                        `<span style="color: ${new Date(ticket.due_date) < new Date() ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
+                        `<span style="color: ${isPastDue(ticket.due_date) ? 'var(--danger)' : 'var(--gray-500)'}">${formatDate(ticket.due_date)}</span>` : 
                         '<span style="color: var(--gray-400)">—</span>'}
                 </td>
                 ${actionsColumn}
@@ -2838,12 +2838,30 @@ function getDetailedActivityLabel(activity) {
 
 function formatDate(dateStr) {
     if (!dateStr) return '';
-    const date = new Date(dateStr);
+    // Agregar T12:00:00 para evitar problemas de timezone con fechas sin hora
+    const dateToUse = dateStr.includes('T') ? dateStr : dateStr.split(' ')[0] + 'T12:00:00';
+    const date = new Date(dateToUse);
     return date.toLocaleDateString('es-ES', { 
         day: '2-digit', 
         month: 'short', 
         year: 'numeric' 
     });
+}
+
+// Helper para parsear fecha sin problemas de timezone
+function parseDate(dateStr) {
+    if (!dateStr) return null;
+    const dateOnly = dateStr.split(' ')[0].split('T')[0];
+    return new Date(dateOnly + 'T12:00:00');
+}
+
+// Verifica si una fecha ya pasó (para due_date)
+function isPastDue(dateStr) {
+    if (!dateStr) return false;
+    const dueDate = parseDate(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dueDate < today;
 }
 
 // Calcula tiempo de entrega: resolved_at - due_date
@@ -2853,8 +2871,8 @@ function getDeliveryTime(ticket) {
         return '<span style="color: var(--gray-400)">—</span>';
     }
     
-    const resolvedDate = new Date(ticket.resolved_at);
-    const dueDate = new Date(ticket.due_date);
+    const resolvedDate = parseDate(ticket.resolved_at);
+    const dueDate = parseDate(ticket.due_date);
     const diffTime = resolvedDate - dueDate;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
@@ -2874,7 +2892,7 @@ function getDeliveryTime(ticket) {
 function isOverdue(ticket) {
     if (!ticket.due_date) return false;
     if (['resolved', 'closed'].includes(ticket.status)) return false;
-    return new Date(ticket.due_date) < new Date();
+    return isPastDue(ticket.due_date);
 }
 
 // Genera badge de retraso si aplica
@@ -3291,8 +3309,8 @@ function renderAgentDashboard(agent, stats, tickets) {
                                         </td>
                                         <td>${getPriorityIcon(t.priority)} ${t.priority}</td>
                                         <td>${t.category_name || '-'}</td>
-                                        <td>${new Date(t.created_at).toLocaleDateString('es-ES')}</td>
-                                        <td>${t.due_date ? `<span style="color: ${new Date(t.due_date) < new Date() ? 'var(--danger)' : 'inherit'}">${new Date(t.due_date).toLocaleDateString('es-ES')}</span>` : '—'}</td>
+                                        <td>${formatDate(t.created_at)}</td>
+                                        <td>${t.due_date ? `<span style="color: ${isPastDue(t.due_date) ? 'var(--danger)' : 'inherit'}">${formatDate(t.due_date)}</span>` : '—'}</td>
                                         <td>${getDeliveryTime(t)}</td>
                                         <td>
                                             <button class="btn btn-sm btn-primary" onclick="loadTicketDetail(${t.id}); showView('ticket-detail')">
