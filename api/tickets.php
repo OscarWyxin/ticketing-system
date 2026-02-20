@@ -666,19 +666,23 @@ function updateTicket($pdo, $id) {
         }
         
         // ============================================
-        // AUTO-SACAR DEL BACKLOG: Si se asigna un ticket que está en backlog,
-        // automáticamente ponerlo en backlog=0
+        // AUTO-SACAR DEL BACKLOG: Si se asigna un ticket que está en backlog
+        // a un AGENTE REAL (no revisor), automáticamente ponerlo en backlog=0
+        // Revisores del backlog: Alfonso (3), Alicia (6) - estos NO sacan del backlog
         // ============================================
+        $backlogReviewers = [3, 6]; // IDs de revisores del backlog (Alfonso, Alicia)
         if (isset($input['assigned_to']) && $input['assigned_to'] && $current['backlog']) {
-            // Solo si no se envió explícitamente el campo backlog
-            if (!isset($input['backlog'])) {
+            // Solo sacar del backlog si el agente NO es un revisor
+            $isAssigningToRealAgent = !in_array((int)$input['assigned_to'], $backlogReviewers);
+            
+            if ($isAssigningToRealAgent && !isset($input['backlog'])) {
                 $fields[] = "backlog = ?";
                 $params[] = 0;
                 
                 // Log del cambio automático
                 file_put_contents(__DIR__ . '/../logs/backlog_auto.log',
                     date('Y-m-d H:i:s') . " - AUTO-SACAR BACKLOG: Ticket #{$current['ticket_number']} " .
-                    "asignado a user_id={$input['assigned_to']}, backlog=0 automáticamente\n",
+                    "asignado a agente_id={$input['assigned_to']}, backlog=0 automáticamente\n",
                     FILE_APPEND);
             }
         }
