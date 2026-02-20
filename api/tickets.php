@@ -665,6 +665,24 @@ function updateTicket($pdo, $id) {
             }
         }
         
+        // ============================================
+        // AUTO-SACAR DEL BACKLOG: Si se asigna un ticket que está en backlog,
+        // automáticamente ponerlo en backlog=0
+        // ============================================
+        if (isset($input['assigned_to']) && $input['assigned_to'] && $current['backlog']) {
+            // Solo si no se envió explícitamente el campo backlog
+            if (!isset($input['backlog'])) {
+                $fields[] = "backlog = ?";
+                $params[] = 0;
+                
+                // Log del cambio automático
+                file_put_contents(__DIR__ . '/../logs/backlog_auto.log',
+                    date('Y-m-d H:i:s') . " - AUTO-SACAR BACKLOG: Ticket #{$current['ticket_number']} " .
+                    "asignado a user_id={$input['assigned_to']}, backlog=0 automáticamente\n",
+                    FILE_APPEND);
+            }
+        }
+        
         if (empty($fields)) {
             echo json_encode(['success' => true, 'message' => 'Nada que actualizar']);
             return;
