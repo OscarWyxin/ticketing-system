@@ -277,6 +277,11 @@
         // User IDs for auto-assignment
         const ASSIGNED_USERS = [3, 6]; // Alfonso (3) y Alicia (6)
 
+        // Anti-duplicados: Control de envío
+        let isSubmitting = false;
+        let lastSubmitTime = 0;
+        const DEBOUNCE_MS = 3000; // 3 segundos entre envíos
+
         document.addEventListener('DOMContentLoaded', () => {
             setupFormListener();
         });
@@ -285,6 +290,14 @@
             const form = document.getElementById('ticket-form');
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                
+                // Anti-duplicados: Verificar debounce
+                const now = Date.now();
+                if (isSubmitting || (now - lastSubmitTime) < DEBOUNCE_MS) {
+                    showToast('⏳ Por favor espera antes de enviar de nuevo', 'error');
+                    return;
+                }
+                
                 await submitTicket(form);
             });
         }
@@ -292,6 +305,10 @@
         async function submitTicket(form) {
             const submitBtn = document.getElementById('submit-btn');
             const loading = document.getElementById('loading');
+            
+            // Marcar como enviando
+            isSubmitting = true;
+            lastSubmitTime = Date.now();
             
             try {
                 submitBtn.disabled = true;
@@ -305,6 +322,7 @@
                     showToast('❌ El teléfono es requerido', 'error');
                     submitBtn.disabled = false;
                     loading.classList.remove('show');
+                    isSubmitting = false;
                     return;
                 }
 
@@ -333,7 +351,11 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast(`✅ Ticket ${result.data.ticket_number} creado exitosamente`, 'success');
+                    if (result.duplicate) {
+                        showToast('✓ Este ticket ya fue enviado anteriormente', 'success');
+                    } else {
+                        showToast(`✅ Ticket ${result.data.ticket_number} creado exitosamente`, 'success');
+                    }
                     form.reset();
                     
                     // Notificar al sistema padre
@@ -357,6 +379,7 @@
                 console.error('Error:', error);
                 showToast('Error de conexión', 'error');
             } finally {
+                isSubmitting = false;
                 submitBtn.disabled = false;
                 loading.classList.remove('show');
             }

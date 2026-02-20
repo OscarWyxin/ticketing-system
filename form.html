@@ -404,6 +404,11 @@
         // Configuración de la API
         const API_URL = './api/tickets.php';
         
+        // Anti-duplicados: Control de envío
+        let isSubmitting = false;
+        let lastSubmitTime = 0;
+        const DEBOUNCE_MS = 3000; // 3 segundos entre envíos
+        
         // Obtener parámetros de URL (útil para GHL)
         const urlParams = new URLSearchParams(window.location.search);
         
@@ -430,6 +435,16 @@
         // Enviar formulario
         document.getElementById('ticket-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            // Anti-duplicados: Verificar debounce
+            const now = Date.now();
+            if (isSubmitting || (now - lastSubmitTime) < DEBOUNCE_MS) {
+                alert('Por favor espera antes de enviar de nuevo');
+                return;
+            }
+            
+            isSubmitting = true;
+            lastSubmitTime = now;
             
             const btn = document.querySelector('.btn-submit');
             btn.classList.add('loading');
@@ -469,6 +484,7 @@
                 console.error('Error:', error);
                 alert('Error de conexión. Por favor intenta de nuevo.');
             } finally {
+                isSubmitting = false;
                 btn.classList.remove('loading');
                 btn.disabled = false;
             }
@@ -478,6 +494,7 @@
             document.getElementById('ticket-form').reset();
             document.querySelector('.form-content').classList.remove('hidden');
             document.getElementById('success-message').classList.remove('show');
+            isSubmitting = false;
         }
     </script>
 </body>

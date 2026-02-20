@@ -265,6 +265,11 @@
         const BACKLOG_TYPE = '{{BACKLOG_TYPE}}';
         const ASSIGNED_USERS = [{{ASSIGNED_USER_ID}}];
 
+        // Anti-duplicados: Control de envío
+        let isSubmitting = false;
+        let lastSubmitTime = 0;
+        const DEBOUNCE_MS = 3000; // 3 segundos entre envíos
+
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('ticket-form');
             const submitBtn = document.getElementById('submit-btn');
@@ -272,6 +277,16 @@
 
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
+                
+                // Anti-duplicados: Verificar debounce
+                const now = Date.now();
+                if (isSubmitting || (now - lastSubmitTime) < DEBOUNCE_MS) {
+                    showToast('Por favor espera antes de enviar de nuevo', 'error');
+                    return;
+                }
+                
+                isSubmitting = true;
+                lastSubmitTime = now;
                 
                 // Disable button and show loading
                 submitBtn.disabled = true;
@@ -307,7 +322,11 @@
                     const result = await response.json();
 
                     if (result.success) {
-                        showToast('¡Ticket creado exitosamente! 🎉', 'success');
+                        if (result.duplicate) {
+                            showToast('Este ticket ya fue enviado anteriormente ✓', 'success');
+                        } else {
+                            showToast('¡Ticket creado exitosamente! 🎉', 'success');
+                        }
                         form.reset();
                     } else {
                         throw new Error(result.error || 'Error al crear ticket');
@@ -316,6 +335,7 @@
                     console.error('Error:', error);
                     showToast('Error: ' + error.message, 'error');
                 } finally {
+                    isSubmitting = false;
                     submitBtn.disabled = false;
                     submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Enviar Ticket';
                     loading.style.display = 'none';

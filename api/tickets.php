@@ -352,9 +352,55 @@ function getTicket($pdo, $id) {
 }
 
 /**
+ * Verificar si existe un ticket duplicado
+ * Criterios: mismo email/teléfono + mismo título + creado hoy + no cerrado
+ * @return array|null Ticket existente o null si no hay duplicado
+ */
+function checkForDuplicateTicket($pdo, $input) {
+    $title = trim($input['title'] ?? '');
+    $email = trim($input['contact_email'] ?? '');
+    $phone = trim($input['contact_phone'] ?? '');
+    $ghlContactId = $input['ghl_contact_id'] ?? null;
+    
+    // Si no hay identificador de contacto, no podemos verificar duplicados
+    if (empty($email) && empty($phone) && empty($ghlContactId)) {
+        return null;
+    }
+    
+    // Buscar ticket similar creado en las últimas 24 horas
+    $sql = "SELECT id, ticket_number, title, status, created_at 
+            FROM tickets 
+            WHERE title = ?
+            AND status NOT IN ('closed', 'resolved')
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+            AND (
+                (contact_email = ? AND contact_email != '' AND contact_email IS NOT NULL)
+                OR (contact_phone = ? AND contact_phone != '' AND contact_phone IS NOT NULL)
+                OR (ghl_contact_id = ? AND ghl_contact_id IS NOT NULL)
+            )
+            LIMIT 1";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([$title, $email, $phone, $ghlContactId]);
+    $existing = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($existing) {
+        // Log del duplicado detectado
+        file_put_contents(__DIR__ . '/../logs/duplicates.log',
+            date('Y-m-d H:i:s') . " - DUPLICADO PREVENIDO: " .
+            "Título='$title', Email='$email', Phone='$phone' " .
+            "-> Ticket existente #{$existing['ticket_number']} (ID: {$existing['id']})\n",
+            FILE_APPEND);
+        return $existing;
+    }
+    
+    return null;
+}
+
+/**
  * Crear nuevo ticket
  */
-function createTicket($pdo) {
+function createTicket($pdo, $skipDuplicateCheck = false) {
     try {
         // Add a custom header to prove execution
         header('X-Tickets-PHP-Executed: yes');
@@ -383,6 +429,23 @@ function createTicket($pdo) {
             http_response_code(400);
             echo json_encode(['error' => 'Título y descripción son requeridos']);
             return;
+        }
+        
+        // ============================================
+        // ANTI-DUPLICADOS: Verificar si ya existe ticket similar
+        // ============================================
+        if (!$skipDuplicateCheck) {
+            $duplicateCheck = checkForDuplicateTicket($pdo, $input);
+            if ($duplicateCheck) {
+                // Retornar el ticket existente en lugar de crear duplicado
+                echo json_encode([
+                    'success' => true,
+                    'data' => $duplicateCheck,
+                    'duplicate' => true,
+                    'message' => 'Ticket existente encontrado, no se creó duplicado'
+                ]);
+                return;
+            }
         }
         
         // Generar número de ticket único con prefijo según work_type
@@ -1064,7 +1127,7 @@ function handleComments($pdo, $ticketId) {
 }
 
 /**
- * Webhook para GHL Forms
+ * Webhook para GHL Forms - Con idempotencia para evitar duplicados
  */
 function handleGHLWebhook($pdo) {
     $input = json_decode(file_get_contents('php://input'), true);
@@ -1074,6 +1137,43 @@ function handleGHLWebhook($pdo) {
         date('Y-m-d H:i:s') . " - " . json_encode($input) . "\n", 
         FILE_APPEND);
     
+    // ============================================
+    // IDEMPOTENCIA: Generar clave única del webhook
+    // ============================================
+    $idempotencyKey = null;
+    if (!empty($input['submission_id'])) {
+        $idempotencyKey = 'ghl_' . $input['submission_id'];
+    } elseif (!empty($input['form_id']) && !empty($input['timestamp'])) {
+        $idempotencyKey = 'ghl_' . md5($input['form_id'] . $input['timestamp'] . ($input['email'] ?? ''));
+    } elseif (!empty($input['contact_id']) && !empty($input['form_id'])) {
+        $idempotencyKey = 'ghl_' . md5($input['contact_id'] . $input['form_id'] . date('Y-m-d'));
+    }
+    
+    // Verificar si ya procesamos este webhook (últimas 24h)
+    if ($idempotencyKey) {
+        $checkStmt = $pdo->prepare("
+            SELECT id, ticket_number FROM tickets 
+            WHERE ghl_form_id = ? 
+            AND created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
+            LIMIT 1
+        ");
+        $checkStmt->execute([$idempotencyKey]);
+        $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($existing) {
+            file_put_contents(__DIR__ . '/../logs/webhooks.log',
+                date('Y-m-d H:i:s') . " - WEBHOOK DUPLICADO IGNORADO: key=$idempotencyKey -> Ticket #{$existing['ticket_number']}\n",
+                FILE_APPEND);
+            echo json_encode([
+                'success' => true,
+                'data' => $existing,
+                'duplicate' => true,
+                'message' => 'Webhook ya procesado anteriormente'
+            ]);
+            return;
+        }
+    }
+    
     // Mapear campos de GHL a ticket
     $ticketData = [
         'title' => $input['form_name'] ?? $input['title'] ?? 'Ticket desde formulario',
@@ -1082,7 +1182,7 @@ function handleGHLWebhook($pdo) {
         'contact_email' => $input['email'] ?? '',
         'contact_phone' => $input['phone'] ?? '',
         'ghl_contact_id' => $input['contact_id'] ?? $input['contactId'] ?? null,
-        'ghl_form_id' => $input['form_id'] ?? $input['formId'] ?? null,
+        'ghl_form_id' => $idempotencyKey ?? ($input['form_id'] ?? $input['formId'] ?? null),
         'source' => 'form',
         'priority' => mapPriority($input['priority'] ?? 'medium'),
         'category_id' => $input['category_id'] ?? null
@@ -1096,7 +1196,7 @@ function handleGHLWebhook($pdo) {
         }
     }
     
-    // Crear el ticket
+    // Crear el ticket (el check de duplicados adicional se hace en createTicket)
     $_POST = $ticketData;
     createTicket($pdo);
 }
