@@ -1739,7 +1739,15 @@ function renderTicketDetail() {
                 ${ticket.work_type === 'puntual' ? `
                 <div class="info-row">
                     <span class="label">Horas Dedicadas</span>
-                    <span class="value" style="font-weight: 700; color: var(--primary);">${formatSecondsToTime(parseFloat(ticket.hours_dedicated || 0) * 3600)}</span>
+                    <input type="text" 
+                           id="hours-dedicated-input"
+                           value="${formatTimerDisplay(Math.round(parseFloat(ticket.hours_dedicated || 0) * 3600))}"
+                           onchange="saveManualHours(this)"
+                           onkeydown="if(event.key==='Enter'){this.blur();}"
+                           style="font-weight: 700; color: var(--primary); background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 6px; padding: 4px 8px; width: 100px; font-size: 0.95rem; text-align: center; transition: all 0.2s;"
+                           onfocus="this.style.borderColor='var(--primary)'; this.style.background='white';"
+                           onblur="this.style.borderColor='var(--gray-200)'; this.style.background='var(--gray-50)';"
+                           title="Editar tiempo manualmente (HH:MM:SS)" />
                 </div>
                 ` : ''}
             </div>
@@ -2185,6 +2193,79 @@ function formatSecondsToTime(totalSeconds) {
     const seconds = Math.round(totalSeconds % 60);
     
     return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+// Parsear tiempo en varios formatos a horas decimales
+function parseTimeToDecimalHours(value) {
+    if (!value || value.trim() === '') return 0;
+    
+    const trimmed = value.trim();
+    
+    // Si ya es un número decimal (ej: "1.5")
+    if (/^\d+(\.\d+)?$/.test(trimmed)) {
+        return parseFloat(trimmed);
+    }
+    
+    // Formato HH:MM:SS o HH:MM
+    if (trimmed.includes(':')) {
+        const parts = trimmed.split(':').map(p => parseInt(p) || 0);
+        if (parts.length === 3) {
+            // HH:MM:SS
+            return parts[0] + (parts[1] / 60) + (parts[2] / 3600);
+        } else if (parts.length === 2) {
+            // HH:MM
+            return parts[0] + (parts[1] / 60);
+        }
+    }
+    
+    // Formato "1h 30m 45s" o variaciones
+    const hMatch = trimmed.match(/(\d+)\s*h/i);
+    const mMatch = trimmed.match(/(\d+)\s*m/i);
+    const sMatch = trimmed.match(/(\d+)\s*s/i);
+    
+    if (hMatch || mMatch || sMatch) {
+        const hours = hMatch ? parseInt(hMatch[1]) : 0;
+        const minutes = mMatch ? parseInt(mMatch[1]) : 0;
+        const seconds = sMatch ? parseInt(sMatch[1]) : 0;
+        return hours + (minutes / 60) + (seconds / 3600);
+    }
+    
+    return null; // Formato no reconocido
+}
+
+// Guardar horas editadas manualmente
+async function saveManualHours(inputElement) {
+    if (!state.currentTicket) return;
+    
+    const value = inputElement.value;
+    const decimalHours = parseTimeToDecimalHours(value);
+    
+    if (decimalHours === null) {
+        showToast('Formato inválido. Usa HH:MM:SS, HH:MM o "1h 30m"', 'error');
+        // Restaurar valor anterior
+        const currentHours = parseFloat(state.currentTicket.hours_dedicated || 0);
+        inputElement.value = formatTimerDisplay(Math.round(currentHours * 3600));
+        return;
+    }
+    
+    try {
+        const response = await apiCall(`${TICKETS_API}?action=update&id=${state.currentTicket.id}`, {
+            method: 'POST',
+            body: JSON.stringify({ hours_dedicated: decimalHours, user_id: 1 })
+        });
+        
+        if (response.success) {
+            const timeFormat = formatSecondsToTime(decimalHours * 3600);
+            showToast(`⏱️ Tiempo actualizado: ${timeFormat}`, 'success');
+            state.currentTicket.hours_dedicated = decimalHours;
+            // Actualizar el input con formato normalizado
+            inputElement.value = formatTimerDisplay(Math.round(decimalHours * 3600));
+        } else {
+            showToast(response.error || 'Error al actualizar', 'error');
+        }
+    } catch (error) {
+        showToast('Error de conexión', 'error');
+    }
 }
 
 function saveTimer() {
@@ -2830,7 +2911,8 @@ function getActivityIcon(action) {
         assigned: 'fas fa-user-check',
         changed_backlog: 'fas fa-inbox',
         comment_added: 'fas fa-comment',
-        status_changed: 'fas fa-exchange-alt'
+        status_changed: 'fas fa-exchange-alt',
+        changed_hours_dedicated: 'fas fa-clock'
     };
     return icons[action] || 'fas fa-history';
 }
@@ -2861,6 +2943,10 @@ function getDetailedActivityLabel(activity) {
             return `asignó el ticket a <strong>${nameToShow}</strong>`;
         case 'changed_backlog':
             return `cambió el estado de backlog de <span class="badge">${formatValue(old_value)}</span> a <span class="badge">${formatValue(new_value)}</span>`;
+        case 'changed_hours_dedicated':
+            const oldTime = formatSecondsToTime(parseFloat(old_value || 0) * 3600);
+            const newTime = formatSecondsToTime(parseFloat(new_value || 0) * 3600);
+            return `modificó el tiempo dedicado de <span class="badge">${oldTime}</span> a <span class="badge">${newTime}</span>`;
         case 'comment_added':
             return 'añadió un comentario';
         default:
