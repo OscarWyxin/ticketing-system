@@ -1683,7 +1683,7 @@ function renderTicketDetail() {
                 </div>
                 <div class="info-row">
                     <span class="label">Categoría</span>
-                    <select class="form-select" style="width: auto; padding: 6px 10px; font-size: 0.85rem;"
+                    <select class="form-select" style="max-width: 140px; padding: 6px 8px; font-size: 0.8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                             onchange="updateTicketField(${ticket.id}, 'category_id', this.value)">
                         <option value="">Sin categoría</option>
                         ${state.categories.map(c => `
@@ -1736,7 +1736,6 @@ function renderTicketDetail() {
                 </div>
                 `}
                 
-                ${ticket.work_type === 'puntual' ? `
                 <div class="info-row">
                     <span class="label">Horas Dedicadas</span>
                     <input type="text" 
@@ -1749,7 +1748,6 @@ function renderTicketDetail() {
                            onblur="this.style.borderColor='var(--gray-200)'; this.style.background='var(--gray-50)';"
                            title="Editar tiempo manualmente (HH:MM:SS)" />
                 </div>
-                ` : ''}
             </div>
             
             ${ticket.activity && ticket.activity.length > 0 ? `
@@ -2681,6 +2679,22 @@ async function rejectTicket(ticketId) {
         }
     } catch (error) {
         showToast('Error de conexión', 'error');
+    }
+}
+
+function editTicket() {
+    if (!state.currentTicket) {
+        showToast('No hay ticket seleccionado', 'error');
+        return;
+    }
+    
+    // Los campos ya son editables directamente en el panel de detalles
+    showToast('💡 Edita los campos directamente en el panel de detalles a la derecha', 'info', 4000);
+    
+    // Hacer scroll al panel de detalles en mobile
+    const detailsPanel = document.querySelector('.info-card');
+    if (detailsPanel) {
+        detailsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
