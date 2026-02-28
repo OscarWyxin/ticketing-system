@@ -729,6 +729,11 @@ function renderStats() {
     renderInternalRequesterStats();
     renderExternalRequesterStats();
 
+    // Render KPIs avanzados
+    renderSLAByAgent();
+    renderSLAByProject();
+    renderSLAMonthlyChart();
+
     // Render recent tickets
     renderRecentTickets();
 }
@@ -1105,6 +1110,165 @@ function renderExternalRequesterStats() {
             </div>
         </div>
     `}).join('');
+}
+
+// ========== KPI: SLA por Agente ==========
+function renderSLAByAgent() {
+    const container = document.getElementById('sla-by-agent-stats');
+    if (!container) return;
+    
+    const agents = state.stats.sla_by_agent || [];
+    
+    if (agents.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <i class="fas fa-user-clock" style="font-size: 2rem; opacity: 0.3;"></i>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin datos de SLA por agente</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            ${agents.map(agent => {
+                const slaPct = parseFloat(agent.sla_pct || 0);
+                const barColor = slaPct >= 80 ? '#22c55e' : slaPct >= 60 ? '#f59e0b' : '#ef4444';
+                const delayText = agent.avg_delay ? ` · Retraso medio: ${agent.avg_delay}d` : '';
+                return `
+                <div style="display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--gray-100);">
+                    <div style="min-width: 120px; font-weight: 500; font-size: 0.85rem; color: var(--gray-700);">${agent.agent_name}</div>
+                    <div style="flex: 1; background: var(--gray-100); border-radius: 8px; height: 22px; position: relative; overflow: hidden;">
+                        <div style="width: ${slaPct}%; background: ${barColor}; height: 100%; border-radius: 8px; transition: width 0.5s;"></div>
+                        <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.75rem; font-weight: 700; color: ${slaPct > 50 ? 'white' : 'var(--gray-700)'}; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">${slaPct}%</span>
+                    </div>
+                    <div style="min-width: 100px; text-align: right; font-size: 0.78rem; color: var(--gray-500);">
+                        <span style="color: #22c55e;">${agent.on_time}</span> / <span style="color: #ef4444;">${agent.late}</span>${delayText}
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>
+        <div style="display: flex; gap: 16px; margin-top: 10px; font-size: 0.75rem; color: var(--gray-400);">
+            <span><span style="color: #22c55e;">●</span> A tiempo</span>
+            <span><span style="color: #ef4444;">●</span> Con retraso</span>
+        </div>
+    `;
+}
+
+// ========== KPI: SLA por Proyecto ==========
+function renderSLAByProject() {
+    const container = document.getElementById('sla-by-project-stats');
+    if (!container) return;
+    
+    const projects = state.stats.sla_by_project || [];
+    
+    if (projects.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state" style="padding: 20px;">
+                <i class="fas fa-project-diagram" style="font-size: 2rem; opacity: 0.3;"></i>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin datos de SLA por proyecto</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+            ${projects.map(proj => {
+                const slaPct = parseFloat(proj.sla_pct || 0);
+                const barColor = slaPct >= 80 ? '#22c55e' : slaPct >= 60 ? '#f59e0b' : '#ef4444';
+                return `
+                <div style="background: var(--gray-50); border-radius: 10px; padding: 14px; border: 1px solid var(--gray-100);">
+                    <div style="font-weight: 600; font-size: 0.85rem; color: var(--gray-700); margin-bottom: 8px;">${proj.project_name}</div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="flex: 1; background: var(--gray-200); border-radius: 8px; height: 18px; position: relative; overflow: hidden;">
+                            <div style="width: ${slaPct}%; background: ${barColor}; height: 100%; border-radius: 8px;"></div>
+                            <span style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 0.7rem; font-weight: 700;">${slaPct}%</span>
+                        </div>
+                        <span style="font-size: 0.75rem; color: var(--gray-500); white-space: nowrap;">
+                            <span style="color: #22c55e;">${proj.on_time}</span>/<span style="color: #ef4444;">${proj.late}</span> de ${proj.total_with_due}
+                        </span>
+                    </div>
+                </div>`;
+            }).join('')}
+        </div>
+    `;
+}
+
+// ========== KPI: Tendencia SLA Mensual ==========
+let slaMonthlyChartInstance = null;
+function renderSLAMonthlyChart() {
+    const canvas = document.getElementById('chart-sla-monthly');
+    if (!canvas || typeof Chart === 'undefined') return;
+    
+    const monthly = state.stats.sla_monthly || [];
+    if (monthly.length === 0) {
+        canvas.parentElement.innerHTML = `
+            <div class="empty-state" style="padding: 40px;">
+                <i class="fas fa-chart-area" style="font-size: 2rem; opacity: 0.3;"></i>
+                <p style="margin-top: 10px; color: var(--gray-400);">Sin datos mensuales de SLA</p>
+            </div>
+        `;
+        return;
+    }
+    
+    if (slaMonthlyChartInstance) {
+        slaMonthlyChartInstance.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    slaMonthlyChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: monthly.map(m => m.month_label),
+            datasets: [
+                {
+                    label: 'A tiempo',
+                    data: monthly.map(m => parseInt(m.on_time)),
+                    backgroundColor: '#22c55e',
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                },
+                {
+                    label: 'Con retraso',
+                    data: monthly.map(m => parseInt(m.late)),
+                    backgroundColor: '#ef4444',
+                    borderRadius: 4,
+                    barPercentage: 0.6
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: { font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' }
+                },
+                tooltip: {
+                    callbacks: {
+                        afterBody: function(context) {
+                            const idx = context[0].dataIndex;
+                            return `SLA: ${monthly[idx].sla_pct}%`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, precision: 0 },
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                }
+            }
+        }
+    });
 }
 
 function renderRecentTickets() {

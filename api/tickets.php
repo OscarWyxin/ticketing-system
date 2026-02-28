@@ -1033,6 +1033,75 @@ function getStats($pdo) {
                          AND DATE(resolved_at) > due_date");
     $stats['avg_delay_days'] = round($stmt->fetchColumn() ?? 0, 1);
     
+    // ========== KPI: SLA por Agente ==========
+    try {
+        $stmt = $pdo->query("
+            SELECT 
+                u.name as agent_name,
+                u.id as agent_id,
+                COUNT(*) as total_with_due,
+                SUM(CASE WHEN DATE(t.resolved_at) <= t.due_date THEN 1 ELSE 0 END) as on_time,
+                SUM(CASE WHEN DATE(t.resolved_at) > t.due_date THEN 1 ELSE 0 END) as late,
+                ROUND(SUM(CASE WHEN DATE(t.resolved_at) <= t.due_date THEN 1 ELSE 0 END) / COUNT(*) * 100, 1) as sla_pct,
+                ROUND(AVG(CASE WHEN DATE(t.resolved_at) > t.due_date THEN DATEDIFF(DATE(t.resolved_at), t.due_date) ELSE NULL END), 1) as avg_delay
+            FROM tickets t
+            INNER JOIN users u ON t.assigned_to = u.id
+            WHERE t.resolved_at IS NOT NULL 
+            AND t.due_date IS NOT NULL
+            GROUP BY u.id, u.name
+            HAVING total_with_due >= 1
+            ORDER BY sla_pct DESC
+        ");
+        $stats['sla_by_agent'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['sla_by_agent'] = [];
+    }
+    
+    // ========== KPI: SLA por Proyecto ==========
+    try {
+        $stmt = $pdo->query("
+            SELECT 
+                p.name as project_name,
+                p.id as project_id,
+                COUNT(*) as total_with_due,
+                SUM(CASE WHEN DATE(t.resolved_at) <= t.due_date THEN 1 ELSE 0 END) as on_time,
+                SUM(CASE WHEN DATE(t.resolved_at) > t.due_date THEN 1 ELSE 0 END) as late,
+                ROUND(SUM(CASE WHEN DATE(t.resolved_at) <= t.due_date THEN 1 ELSE 0 END) / COUNT(*) * 100, 1) as sla_pct
+            FROM tickets t
+            INNER JOIN projects p ON t.project_id = p.id
+            WHERE t.resolved_at IS NOT NULL 
+            AND t.due_date IS NOT NULL
+            GROUP BY p.id, p.name
+            HAVING total_with_due >= 1
+            ORDER BY sla_pct DESC
+        ");
+        $stats['sla_by_project'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['sla_by_project'] = [];
+    }
+    
+    // ========== KPI: Tendencia SLA mensual (últimos 6 meses) ==========
+    try {
+        $stmt = $pdo->query("
+            SELECT 
+                DATE_FORMAT(resolved_at, '%Y-%m') as month,
+                DATE_FORMAT(resolved_at, '%b %Y') as month_label,
+                COUNT(*) as total,
+                SUM(CASE WHEN DATE(resolved_at) <= due_date THEN 1 ELSE 0 END) as on_time,
+                SUM(CASE WHEN DATE(resolved_at) > due_date THEN 1 ELSE 0 END) as late,
+                ROUND(SUM(CASE WHEN DATE(resolved_at) <= due_date THEN 1 ELSE 0 END) / COUNT(*) * 100, 1) as sla_pct
+            FROM tickets
+            WHERE resolved_at IS NOT NULL 
+            AND due_date IS NOT NULL
+            AND resolved_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+            GROUP BY month, month_label
+            ORDER BY month ASC
+        ");
+        $stats['sla_monthly'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (Exception $e) {
+        $stats['sla_monthly'] = [];
+    }
+    
     echo json_encode(['success' => true, 'data' => $stats]);
 }
 
