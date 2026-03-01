@@ -833,19 +833,12 @@ function getStats($pdo) {
     
     // Construir filtro de fechas
     $dateFilter = '';
-    // Usar timezone de Madrid para consistencia
-    date_default_timezone_set('Europe/Madrid');
-    $now = new DateTime('now', new DateTimeZone('Europe/Madrid'));
-    $currentYear = $now->format('Y');
-    $currentMonth = $now->format('m');
-    $currentQuarter = ceil($currentMonth / 3);
-    
     if ($period === 'year') {
-        $dateFilter = " AND YEAR(t.created_at) = $currentYear";
+        $dateFilter = " AND YEAR(t.created_at) = YEAR(CURDATE())";
     } elseif ($period === 'quarter') {
-        $dateFilter = " AND QUARTER(t.created_at) = $currentQuarter AND YEAR(t.created_at) = $currentYear";
+        $dateFilter = " AND QUARTER(t.created_at) = QUARTER(CURDATE()) AND YEAR(t.created_at) = YEAR(CURDATE())";
     } elseif ($period === 'month') {
-        $dateFilter = " AND MONTH(t.created_at) = $currentMonth AND YEAR(t.created_at) = $currentYear";
+        $dateFilter = " AND MONTH(t.created_at) = MONTH(CURDATE()) AND YEAR(t.created_at) = YEAR(CURDATE())";
     } elseif ($dateFrom && $dateTo) {
         $dateFilter = " AND t.created_at >= '$dateFrom' AND t.created_at <= '$dateTo 23:59:59'";
     }

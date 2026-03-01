@@ -31,6 +31,9 @@ define('DB_PASS', getenv('DB_PASS') ?: '');
 // Conexión PDO
 function getConnection() {
     try {
+        // Timezone PHP
+        date_default_timezone_set('Europe/Madrid');
+        
         $pdo = new PDO(
             "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=utf8mb4",
             DB_USER,
@@ -41,6 +44,10 @@ function getConnection() {
                 PDO::ATTR_EMULATE_PREPARES => false
             ]
         );
+        
+        // Timezone MySQL - para que NOW(), CURDATE(), etc. usen Madrid
+        $pdo->exec("SET time_zone = '+01:00'");
+        
         return $pdo;
     } catch (PDOException $e) {
         http_response_code(500);
