@@ -96,7 +96,7 @@ define('WHATSAPP_WEBHOOK_URL', 'https://services.leadconnectorhq.com/hooks/NYp3y
 /**
  * WEBHOOK URL para notificaciones internas al equipo (WhatsApp a Alfonso/Alicia)
  */
-define('TEAM_WEBHOOK_URL', 'https://services.leadconnectorhq.com/hooks/NYp3yidBIbmOdKtTKdgU/webhook-trigger/0bbb6875-2e81-4837-a942-a10ab6fe4281');
+define('TEAM_WEBHOOK_URL', 'https://services.leadconnectorhq.com/hooks/NYp3yidBIbmOdKtTKdgU/webhook-trigger/d62fe610-4015-4e3f-8fbc-c3341b4bba07');
 
 /**
  * Enviar notificación WhatsApp a miembros del equipo via webhook
