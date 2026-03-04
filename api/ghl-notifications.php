@@ -94,6 +94,74 @@ function updateContactCustomFields($contactId, $customFields = []) {
 define('WHATSAPP_WEBHOOK_URL', 'https://services.leadconnectorhq.com/hooks/NYp3yidBIbmOdKtTKdgU/webhook-trigger/8bf417a6-ce81-4cfc-886d-0b0d289b590a');
 
 /**
+ * WEBHOOK URL para notificaciones internas al equipo (WhatsApp a Alfonso/Alicia)
+ */
+define('TEAM_WEBHOOK_URL', 'https://services.leadconnectorhq.com/hooks/NYp3yidBIbmOdKtTKdgU/webhook-trigger/0bbb6875-2e81-4837-a942-a10ab6fe4281');
+
+/**
+ * Enviar notificación WhatsApp a miembros del equipo via webhook
+ * Usado para notificar a Alfonso/Alicia sobre nuevos tickets en backlog y solicitudes de revisión
+ */
+function notifyTeamWhatsApp($pdo, $userId, $data, $notificationType) {
+    notifLog("=== TEAM WHATSAPP: $notificationType para usuario $userId ===");
+    
+    // Obtener datos del usuario destino
+    $stmt = $pdo->prepare("SELECT id, name, email, phone FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$user || empty($user['phone'])) {
+        notifLog("Usuario $userId sin teléfono, no se puede enviar WhatsApp");
+        return ['success' => false, 'error' => 'Usuario sin teléfono'];
+    }
+    
+    $payload = [
+        'notification_type' => $notificationType,
+        'destinatario_phone' => $user['phone'],
+        'destinatario_name' => $user['name'],
+        'ticket_number' => $data['ticket_number'] ?? 'N/A',
+        'ticket_title' => $data['title'] ?? 'Sin título',
+        'ticket_priority' => $data['priority'] ?? 'medium',
+        'ticket_description' => substr($data['description'] ?? '', 0, 500),
+        'deliverable' => $data['deliverable'] ?? '',
+        'agent_name' => $data['assigned_to_name'] ?? $data['agent_name'] ?? '',
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+    
+    notifLog("Team webhook payload: " . json_encode($payload));
+    
+    try {
+        $ch = curl_init(TEAM_WEBHOOK_URL);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Content-Type: application/json',
+            'Accept: application/json'
+        ]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        
+        $success = $httpCode >= 200 && $httpCode < 300;
+        notifLog("Team webhook response - HTTP $httpCode: $response");
+        
+        return [
+            'success' => $success,
+            'http_code' => $httpCode,
+            'response' => $response,
+            'error' => $curlError ?: null
+        ];
+    } catch (Exception $e) {
+        notifLog("Team webhook error: " . $e->getMessage());
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
  * Buscar o crear contacto en GHL y obtener su ID
  * Intenta crear el contacto - si ya existe, obtiene el ID del error
  */
@@ -1242,6 +1310,9 @@ function notifyTicketAssignment($pdo, $userId, $ticketData) {
     // Crear tarea en GHL
     $results['task'] = createGHLTask($pdo, $userId, $ticketData);
     
+    // Enviar WhatsApp via webhook
+    $results['whatsapp'] = notifyTeamWhatsApp($pdo, $userId, $ticketData, 'backlog_new');
+    
     notifLog("RESULTADO FINAL: " . json_encode($results));
     notifLog("========================================\n");
     
@@ -1294,7 +1365,10 @@ function notifyReviewRequest($pdo, $ticketData) {
         $taskResult = ghlApiCall("/contacts/{$contactId}/tasks", 'POST', $taskData, GHL_LOCATION_ID);
         notifLog("Tarea a {$user['name']}: " . json_encode($taskResult));
         
-        $results[$userId] = ['email' => $emailResult, 'task' => $taskResult];
+        // Enviar WhatsApp via webhook
+        $whatsappResult = notifyTeamWhatsApp($pdo, $userId, $ticketData, 'review_requested');
+        
+        $results[$userId] = ['email' => $emailResult, 'task' => $taskResult, 'whatsapp' => $whatsappResult];
     }
     
     return $results;
