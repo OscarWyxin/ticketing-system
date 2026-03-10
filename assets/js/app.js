@@ -4045,7 +4045,12 @@ async function loadProjects() {
     container.innerHTML = '<div class="loading">Cargando proyectos...</div>';
     
     try {
-        const response = await apiCall(`${PROJECTS_API}?action=list`);
+        let url = `${PROJECTS_API}?action=list`;
+        // Agentes solo ven sus proyectos asignados
+        if (state.auth?.user?.role === 'agent' && state.auth.user.id) {
+            url += `&agent_id=${state.auth.user.id}`;
+        }
+        const response = await apiCall(url);
         
         if (response.success && response.projects) {
             renderProjects(response.projects);
@@ -4280,21 +4285,25 @@ function renderRoadmap(phases) {
                     </div>
                     <span class="phase-status ${phase.status}">${getPhaseStatusLabel(phase.status)}</span>
                     <div class="phase-actions" onclick="event.stopPropagation()">
+                        ${state.auth?.user?.role !== 'agent' ? `
                         <button class="btn btn-sm btn-ghost" onclick="editPhase(${phase.id})" title="Editar">
                             <i class="fas fa-edit"></i>
                         </button>
                         <button class="btn btn-sm btn-ghost" onclick="deletePhase(${phase.id})" title="Eliminar">
                             <i class="fas fa-trash"></i>
                         </button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
             <div class="phase-content" id="phase-content-${phase.id}">
                 <div class="activities-list">
                     ${renderActivities(phase.activities || [], phase.id)}
+                    ${state.auth?.user?.role !== 'agent' ? `
                     <button class="add-activity-btn" onclick="openNewActivityModal(${phase.id})">
                         <i class="fas fa-plus"></i> Agregar actividad
                     </button>
+                    ` : ''}
                 </div>
             </div>
         </div>
@@ -4334,7 +4343,7 @@ function renderActivities(activities, phaseId) {
                 <div class="activity-converted" onclick="loadTicketDetail(${activity.ticket_id}); showView('ticket-detail')">
                     <i class="fas fa-ticket-alt"></i> ${activity.ticket_number || 'Ticket'}
                 </div>
-            ` : `
+            ` : (state.auth?.user?.role !== 'agent' ? `
                 <div class="activity-actions">
                     <button class="btn btn-sm btn-warning" onclick="convertActivityToTicket(${activity.id})" title="Bajar a Ticket">
                         <i class="fas fa-arrow-down"></i>
@@ -4346,7 +4355,7 @@ function renderActivities(activities, phaseId) {
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
-            `}
+            ` : '')}
         </div>
     `).join('');
 }
@@ -5455,10 +5464,6 @@ function applyRolePermissions() {
             if (view === 'dashboard') {
                 item.style.display = 'none';
             }
-            // Ocultar proyectos
-            if (view === 'projects') {
-                item.style.display = 'none';
-            }
             // Ocultar backlogs
             if (view === 'backlog-consultoria' || view === 'backlog-aib') {
                 item.style.display = 'none';
@@ -5488,6 +5493,14 @@ function applyRolePermissions() {
         
         // Agregar link a Mis Métricas si no existe
         addMyMetricsLink();
+        
+        // Ocultar botón "Nuevo Proyecto" en la vista de proyectos
+        const newProjectBtn = document.querySelector('#view-projects .btn-primary');
+        if (newProjectBtn) newProjectBtn.style.display = 'none';
+        
+        // Ocultar botones "Editar" y "Nueva Fase" en detalle de proyecto
+        const projectDetailActions = document.querySelectorAll('#view-project-detail .header-actions .btn');
+        projectDetailActions.forEach(btn => btn.style.display = 'none');
     }
     
     // === HEADER: Todos pueden usar el menú para cerrar sesión ===

@@ -84,7 +84,9 @@ try {
 // =====================================================
 
 function listProjects($pdo) {
-    $sql = "SELECT p.*, 
+    $agentId = isset($_GET['agent_id']) ? intval($_GET['agent_id']) : 0;
+    
+    $sql = "SELECT DISTINCT p.*, 
                    u.name as responsible_name,
                    a.name as client_name,
                    (SELECT COUNT(*) FROM project_phases WHERE project_id = p.id) as phase_count,
@@ -92,11 +94,23 @@ function listProjects($pdo) {
                    (SELECT COUNT(*) FROM project_activities WHERE project_id = p.id AND status = 'completed') as completed_activities
             FROM projects p
             LEFT JOIN users u ON p.responsible_id = u.id
-            LEFT JOIN accounts a ON p.client_id = a.id
-            WHERE p.status != 'archived'
-            ORDER BY p.name ASC";
+            LEFT JOIN accounts a ON p.client_id = a.id";
     
-    $stmt = $pdo->query($sql);
+    if ($agentId > 0) {
+        $sql .= " LEFT JOIN project_activities pa ON pa.project_id = p.id";
+        $sql .= " WHERE p.status != 'archived' AND (p.responsible_id = :agent_id OR pa.assigned_to = :agent_id2)";
+    } else {
+        $sql .= " WHERE p.status != 'archived'";
+    }
+    
+    $sql .= " ORDER BY p.name ASC";
+    
+    if ($agentId > 0) {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute(['agent_id' => $agentId, 'agent_id2' => $agentId]);
+    } else {
+        $stmt = $pdo->query($sql);
+    }
     $projects = $stmt->fetchAll();
     
     // Calcular progreso
