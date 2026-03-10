@@ -1589,7 +1589,7 @@ function notifyActivityAssignment($pdo, $userId, $activityData) {
                     </div>
                     
                     <p style='margin-top: 20px;'>
-                        <a href='https://tickets.srv764777.hstgr.cloud/' 
+                        <a href='https://ticketingwixyn.tech/' 
                            style='background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;'>
                             Ver en el Sistema
                         </a>
@@ -1713,7 +1713,7 @@ function notifyAgentOfClientResponse($pdo, $ticket, $clientResponse, $attachment
                             <table role='presentation' width='100%' cellspacing='0' cellpadding='0' style='margin-top: 30px;'>
                                 <tr>
                                     <td align='center'>
-                                        <a href='https://tickets.srv764777.hstgr.cloud/' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 35px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;'>Ver Ticket</a>
+                                        <a href='https://ticketingwixyn.tech/' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 14px 35px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 15px;'>Ver Ticket</a>
                                     </td>
                                 </tr>
                             </table>
