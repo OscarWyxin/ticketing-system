@@ -575,7 +575,7 @@
                 <i class="fas fa-shield-alt"></i>
                 Portal Interno
             </div>
-            <h1>🎫 Nuevo Ticket Interno</h1>
+            <h1>ðŸŽ« Nuevo Ticket Interno</h1>
             <p>ConMenosPeersonal - Sistema de Soporte</p>
         </div>
 
@@ -612,7 +612,7 @@
                 <div class="form-section" id="client-section" style="display: none;">
                     <div class="section-title">
                         <i class="fas fa-user"></i>
-                        Información del Cliente
+                        InformaciÃ³n del Cliente
                     </div>
                     <div class="form-row">
                         <div class="form-group">
@@ -622,7 +622,7 @@
                                 <option value="cliente1">Cliente Ejemplo 1</option>
                                 <option value="cliente2">Cliente Ejemplo 2</option>
                                 <option value="cliente3">Cliente Ejemplo 3</option>
-                                <!-- Se cargan dinámicamente -->
+                                <!-- Se cargan dinÃ¡micamente -->
                             </select>
                         </div>
                         <div class="form-group">
@@ -641,15 +641,15 @@
                     
                     <div class="form-row">
                         <div class="form-group">
-                            <label><i class="fas fa-folder"></i> Categoría <span class="required">*</span></label>
+                            <label><i class="fas fa-folder"></i> CategorÃ­a <span class="required">*</span></label>
                             <select name="category_id" class="form-control" required>
                                 <option value="">Seleccionar...</option>
-                                <option value="1">🔧 Soporte Técnico</option>
-                                <option value="2">💰 Ventas</option>
-                                <option value="3">📄 Facturación</option>
-                                <option value="4">📋 General</option>
-                                <option value="5">⚠️ Urgente</option>
-                                <option value="6">🚀 Implementación</option>
+                                <option value="1">ðŸ”§ Soporte TÃ©cnico</option>
+                                <option value="2">ðŸ’° Ventas</option>
+                                <option value="3">ðŸ“„ FacturaciÃ³n</option>
+                                <option value="4">ðŸ“‹ General</option>
+                                <option value="5">âš ï¸ Urgente</option>
+                                <option value="6">ðŸš€ ImplementaciÃ³n</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -691,14 +691,14 @@
                     </div>
 
                     <div class="form-group">
-                        <label><i class="fas fa-align-left"></i> Descripción <span class="required">*</span></label>
+                        <label><i class="fas fa-align-left"></i> DescripciÃ³n <span class="required">*</span></label>
                         <textarea name="description" class="form-control" 
-                                  placeholder="Explica el problema en detalle. Incluye:&#10;• Qué estabas intentando hacer&#10;• Qué error apareció&#10;• Pasos para reproducir el problema" required></textarea>
+                                  placeholder="Explica el problema en detalle. Incluye:&#10;â€¢ QuÃ© estabas intentando hacer&#10;â€¢ QuÃ© error apareciÃ³&#10;â€¢ Pasos para reproducir el problema" required></textarea>
                     </div>
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label><i class="fas fa-calendar"></i> Fecha límite</label>
+                            <label><i class="fas fa-calendar"></i> Fecha lÃ­mite</label>
                             <input type="date" name="due_date" class="form-control">
                         </div>
                         <div class="form-group">
@@ -722,8 +722,8 @@
                 <div class="success-icon">
                     <i class="fas fa-check"></i>
                 </div>
-                <h2>¡Ticket Creado!</h2>
-                <p>Tu solicitud ha sido registrada y será atendida pronto.</p>
+                <h2>Â¡Ticket Creado!</h2>
+                <p>Tu solicitud ha sido registrada y serÃ¡ atendida pronto.</p>
                 <div class="ticket-number-display" id="ticket-number">TK-20260105-XXXX</div>
                 <br><br>
                 <button onclick="resetForm()" class="btn-secondary">
@@ -734,7 +734,7 @@
     </div>
 
     <script>
-        const API_URL = './api/tickets.php';
+        const API_URL = 'https://ticketingwixyn.tech/api/tickets.php';
         const isEmbedded = new URLSearchParams(window.location.search).get('embedded') === 'true';
 
         // Apply embedded mode styles
@@ -812,7 +812,7 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                alert('Error de conexión. Por favor intenta de nuevo.');
+                alert('Error de conexiÃ³n. Por favor intenta de nuevo.');
             } finally {
                 btn.classList.remove('loading');
                 btn.disabled = false;

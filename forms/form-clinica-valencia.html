@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Crear Ticket - Clínica Valencia</title>
+    <title>Crear Ticket - ClÃ­nica Valencia</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         * {
@@ -206,24 +206,24 @@
     <div class="form-container">
         <div class="form-header">
             <i class="fas fa-hospital" style="font-size: 32px; margin-bottom: 12px;"></i>
-            <h1>Crear Ticket Clínica Valencia</h1>
+            <h1>Crear Ticket ClÃ­nica Valencia</h1>
             <p>Reporta tu consulta o requerimiento</p>
         </div>
 
         <form id="ticket-form" class="form-body">
             <div class="form-group">
-                <label>Título <span class="required">*</span></label>
+                <label>TÃ­tulo <span class="required">*</span></label>
                 <input type="text" name="title" required placeholder="Resumen del ticket">
             </div>
 
             <div class="form-group">
-                <label>Descripción <span class="required">*</span></label>
+                <label>DescripciÃ³n <span class="required">*</span></label>
                 <textarea name="description" required placeholder="Detalles y contexto..."></textarea>
             </div>
 
             <div class="form-group">
                 <label>Tu Nombre <span class="required">*</span></label>
-                <input type="text" name="contact_name" required placeholder="¿Cuál es tu nombre?">
+                <input type="text" name="contact_name" required placeholder="Â¿CuÃ¡l es tu nombre?">
             </div>
 
             <div class="form-group">
@@ -232,7 +232,7 @@
             </div>
 
             <div class="form-group">
-                <label>Teléfono <span class="required">*</span></label>
+                <label>TelÃ©fono <span class="required">*</span></label>
                 <input type="tel" name="contact_phone" required placeholder="+56 9 XXXX XXXX">
             </div>
 
@@ -266,11 +266,11 @@
     </div>
 
     <script>
-        const API_BASE = '../api';
+        const API_BASE = 'https://ticketingwixyn.tech/api';
         const TICKETS_API = `${API_BASE}/tickets.php`;
         const HELPERS_API = `${API_BASE}/helpers.php`;
         
-        // Clínica Valencia Project ID
+        // ClÃ­nica Valencia Project ID
         const PROJECT_ID = 11;
         const BACKLOG_TYPE = 'aib';
         
@@ -300,15 +300,15 @@
                 const formData = new FormData(form);
                 const data = Object.fromEntries(formData.entries());
 
-                // Validar que contact_phone no esté vacío
+                // Validar que contact_phone no estÃ© vacÃ­o
                 if (!data['contact_phone'] || data['contact_phone'].trim() === '') {
-                    showToast('❌ El teléfono es requerido', 'error');
+                    showToast('âŒ El telÃ©fono es requerido', 'error');
                     submitBtn.disabled = false;
                     loading.classList.remove('show');
                     return;
                 }
 
-                // Limpiar campos vacíos (EXCEPTO contact_phone)
+                // Limpiar campos vacÃ­os (EXCEPTO contact_phone)
                 Object.keys(data).forEach(key => {
                     if (key !== 'contact_phone' && (!data[key] || data[key] === '')) {
                         delete data[key];
@@ -333,7 +333,7 @@
                 const result = await response.json();
 
                 if (result.success) {
-                    showToast(`✅ Ticket ${result.data.ticket_number} creado exitosamente`, 'success');
+                    showToast(`âœ… Ticket ${result.data.ticket_number} creado exitosamente`, 'success');
                     form.reset();
                     
                     // Notificar al sistema padre
@@ -344,7 +344,7 @@
                         }, '*');
                     }
 
-                    // Redirigir o cerrar después de 2 segundos
+                    // Redirigir o cerrar despuÃ©s de 2 segundos
                     setTimeout(() => {
                         if (window.parent !== window) {
                             window.parent.location.reload();
@@ -355,7 +355,7 @@
                 }
             } catch (error) {
                 console.error('Error:', error);
-                showToast('Error de conexión', 'error');
+                showToast('Error de conexiÃ³n', 'error');
             } finally {
                 submitBtn.disabled = false;
                 loading.classList.remove('show');

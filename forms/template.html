@@ -202,18 +202,18 @@
 
         <form id="ticket-form" class="form-body">
             <div class="form-group">
-                <label>Título <span class="required">*</span></label>
+                <label>TÃ­tulo <span class="required">*</span></label>
                 <input type="text" name="title" required placeholder="Resumen del ticket">
             </div>
 
             <div class="form-group">
-                <label>Descripción <span class="required">*</span></label>
+                <label>DescripciÃ³n <span class="required">*</span></label>
                 <textarea name="description" required placeholder="Detalles y contexto..."></textarea>
             </div>
 
             <div class="form-group">
                 <label>Tu Nombre <span class="required">*</span></label>
-                <input type="text" name="contact_name" required placeholder="¿Cuál es tu nombre?">
+                <input type="text" name="contact_name" required placeholder="Â¿CuÃ¡l es tu nombre?">
             </div>
 
             <div class="form-group">
@@ -222,7 +222,7 @@
             </div>
 
             <div class="form-group">
-                <label>Teléfono <span class="required">*</span></label>
+                <label>TelÃ©fono <span class="required">*</span></label>
                 <input type="tel" name="contact_phone" required placeholder="+56 9 XXXX XXXX">
             </div>
 
@@ -256,7 +256,7 @@
     </div>
 
     <script>
-        const API_BASE = '../api';
+        const API_BASE = 'https://ticketingwixyn.tech/api';
         const TICKETS_API = `${API_BASE}/tickets.php`;
         const HELPERS_API = `${API_BASE}/helpers.php`;
         
@@ -265,10 +265,10 @@
         const BACKLOG_TYPE = '{{BACKLOG_TYPE}}';
         const ASSIGNED_USERS = [{{ASSIGNED_USER_ID}}];
 
-        // Anti-duplicados: Control de envío
+        // Anti-duplicados: Control de envÃ­o
         let isSubmitting = false;
         let lastSubmitTime = 0;
-        const DEBOUNCE_MS = 3000; // 3 segundos entre envíos
+        const DEBOUNCE_MS = 3000; // 3 segundos entre envÃ­os
 
         document.addEventListener('DOMContentLoaded', () => {
             const form = document.getElementById('ticket-form');
@@ -323,9 +323,9 @@
 
                     if (result.success) {
                         if (result.duplicate) {
-                            showToast('Este ticket ya fue enviado anteriormente ✓', 'success');
+                            showToast('Este ticket ya fue enviado anteriormente âœ“', 'success');
                         } else {
-                            showToast('¡Ticket creado exitosamente! 🎉', 'success');
+                            showToast('Â¡Ticket creado exitosamente! ðŸŽ‰', 'success');
                         }
                         form.reset();
                     } else {
